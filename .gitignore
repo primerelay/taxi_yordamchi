@@ -1,0 +1,11 @@
+.env
+*.db
+*.session
+*.session-journal
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+node_modules/
+admin/frontend/dist/

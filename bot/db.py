@@ -1,0 +1,185 @@
+"""SQLite ma'lumotlar bazasi (aiosqlite)."""
+from __future__ import annotations
+
+from typing import Optional
+
+import aiosqlite
+
+from . import config
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    user_id          INTEGER PRIMARY KEY,   -- haydovchining Telegram ID si
+    phone            TEXT,
+    session          TEXT,                  -- Telethon StringSession
+    message          TEXT,
+    interval_minutes INTEGER,
+    active           INTEGER NOT NULL DEFAULT 0,
+    full_name        TEXT,
+    username         TEXT,
+    last_active      TEXT,                  -- oxirgi faollik (DAU uchun)
+    paid_until       TEXT,                  -- to'lov amal qilish sanasi (YYYY-MM-DD)
+    created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS selected_groups (
+    user_id INTEGER NOT NULL,
+    chat_id INTEGER NOT NULL,
+    title   TEXT,
+    PRIMARY KEY (user_id, chat_id)
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    amount  REAL NOT NULL,
+    months  INTEGER,
+    paid_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    note    TEXT
+);
+"""
+
+# Mavjud bazaga yangi ustunlarni qo'shish (migratsiya).
+_MIGRATIONS = {
+    "full_name": "ALTER TABLE users ADD COLUMN full_name TEXT",
+    "username": "ALTER TABLE users ADD COLUMN username TEXT",
+    "last_active": "ALTER TABLE users ADD COLUMN last_active TEXT",
+    "paid_until": "ALTER TABLE users ADD COLUMN paid_until TEXT",
+}
+
+
+async def init() -> None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute("PRAGMA journal_mode=WAL")  # admin panel bilan bir vaqtda o'qish
+        await db.executescript(_SCHEMA)
+        # Eski bazalarga yetishmayotgan ustunlarni qo'shamiz.
+        cur = await db.execute("PRAGMA table_info(users)")
+        existing = {row[1] for row in await cur.fetchall()}
+        for column, sql in _MIGRATIONS.items():
+            if column not in existing:
+                await db.execute(sql)
+        await db.commit()
+
+
+async def touch_user(
+    user_id: int, full_name: str | None = None, username: str | None = None
+) -> None:
+    """Har bir muloqotda chaqiriladi — profilni yangilaydi va faollikni belgilaydi."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+        await db.execute(
+            "UPDATE users SET last_active = datetime('now', 'localtime'), "
+            "full_name = COALESCE(?, full_name), username = COALESCE(?, username) "
+            "WHERE user_id = ?",
+            (full_name, username, user_id),
+        )
+        await db.commit()
+
+
+async def ensure_user(user_id: int) -> None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,)
+        )
+        await db.commit()
+
+
+async def get_user(user_id: int) -> Optional[dict]:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def set_session(user_id: int, phone: str, session: str) -> None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET phone = ?, session = ? WHERE user_id = ?",
+            (phone, session, user_id),
+        )
+        await db.commit()
+
+
+async def clear_session(user_id: int) -> None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET session = NULL, active = 0 WHERE user_id = ?",
+            (user_id,),
+        )
+        await db.commit()
+
+
+async def set_message(user_id: int, message: str) -> None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET message = ? WHERE user_id = ?", (message, user_id)
+        )
+        await db.commit()
+
+
+async def set_interval(user_id: int, minutes: int) -> None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET interval_minutes = ? WHERE user_id = ?",
+            (minutes, user_id),
+        )
+        await db.commit()
+
+
+async def set_active(user_id: int, active: bool) -> None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET active = ? WHERE user_id = ?",
+            (1 if active else 0, user_id),
+        )
+        await db.commit()
+
+
+async def toggle_group(user_id: int, chat_id: int, title: str) -> bool:
+    """Guruhni tanlangan/tanlanmaganga o'zgartiradi. True = endi tanlangan."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT 1 FROM selected_groups WHERE user_id = ? AND chat_id = ?",
+            (user_id, chat_id),
+        )
+        exists = await cur.fetchone()
+        if exists:
+            await db.execute(
+                "DELETE FROM selected_groups WHERE user_id = ? AND chat_id = ?",
+                (user_id, chat_id),
+            )
+            await db.commit()
+            return False
+        await db.execute(
+            "INSERT INTO selected_groups (user_id, chat_id, title) VALUES (?, ?, ?)",
+            (user_id, chat_id, title),
+        )
+        await db.commit()
+        return True
+
+
+async def get_selected_group_ids(user_id: int) -> set[int]:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT chat_id FROM selected_groups WHERE user_id = ?", (user_id,)
+        )
+        rows = await cur.fetchall()
+        return {r[0] for r in rows}
+
+
+async def get_selected_groups(user_id: int) -> list[dict]:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT chat_id, title FROM selected_groups WHERE user_id = ?",
+            (user_id,),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_active_users() -> list[dict]:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM users WHERE active = 1")
+        return [dict(r) for r in await cur.fetchall()]

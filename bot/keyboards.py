@@ -17,14 +17,18 @@ def _btn(action: str, lang: str) -> KeyboardButton:
 def main_menu(lang: str, logged_in: bool) -> ReplyKeyboardMarkup:
     """Chat pastida doim turadigan asosiy menyu."""
     if not logged_in:
-        rows = [[_btn("login", lang)], [_btn("lang", lang), _btn("restart", lang)]]
+        rows = [
+            [_btn("login", lang)],
+            [_btn("sub", lang), _btn("lang", lang)],
+            [_btn("restart", lang)],
+        ]
     else:
         rows = [
             [_btn("message", lang), _btn("groups", lang)],
             [_btn("interval", lang), _btn("status", lang)],
             [_btn("start", lang), _btn("stop", lang)],
-            [_btn("lang", lang), _btn("logout", lang)],
-            [_btn("restart", lang)],
+            [_btn("sub", lang), _btn("lang", lang)],
+            [_btn("logout", lang), _btn("restart", lang)],
         ]
     return ReplyKeyboardMarkup(
         keyboard=rows,

@@ -67,6 +67,11 @@ async def init() -> None:
         for column, sql in _MIGRATIONS.items():
             if column not in existing:
                 await db.execute(sql)
+        # Obunasi umuman belgilanmagan (eski) foydalanuvchilarga bir martalik sinov.
+        await db.execute(
+            "UPDATE users SET paid_until = date('now', 'localtime', ?) WHERE paid_until IS NULL",
+            (f"+{config.TRIAL_DAYS} days",),
+        )
         await db.commit()
 
 
@@ -75,7 +80,7 @@ async def touch_user(
 ) -> None:
     """Har bir muloqotda chaqiriladi — profilni yangilaydi va faollikni belgilaydi."""
     async with aiosqlite.connect(config.DB_PATH) as db:
-        await db.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+        await _grant_trial_if_new(db, user_id)
         await db.execute(
             "UPDATE users SET last_active = datetime('now', 'localtime'), "
             "full_name = COALESCE(?, full_name), username = COALESCE(?, username) "
@@ -85,12 +90,30 @@ async def touch_user(
         await db.commit()
 
 
+async def _grant_trial_if_new(db: aiosqlite.Connection, user_id: int) -> None:
+    """Foydalanuvchi birinchi marta yaratilsa, unga sinov muddatini beradi."""
+    cur = await db.execute(
+        "INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,)
+    )
+    if cur.rowcount == 1:  # yangi foydalanuvchi
+        await db.execute(
+            "UPDATE users SET paid_until = date('now', 'localtime', ?) WHERE user_id = ?",
+            (f"+{config.TRIAL_DAYS} days", user_id),
+        )
+
+
 async def ensure_user(user_id: int) -> None:
     async with aiosqlite.connect(config.DB_PATH) as db:
-        await db.execute(
-            "INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,)
-        )
+        await _grant_trial_if_new(db, user_id)
         await db.commit()
+
+
+def subscription_ok(paid_until: Optional[str]) -> bool:
+    """Obuna amal qilyaptimi (paid_until >= bugun)."""
+    if not paid_until:
+        return False
+    from datetime import date
+    return paid_until >= date.today().isoformat()
 
 
 async def get_user(user_id: int) -> Optional[dict]:

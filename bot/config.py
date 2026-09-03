@@ -20,3 +20,11 @@ BOT_TOKEN = _require("BOT_TOKEN")
 DB_PATH = os.getenv("DB_PATH", "taxi_bot.db")
 MIN_INTERVAL_MINUTES = int(os.getenv("MIN_INTERVAL_MINUTES", "5"))
 SEND_DELAY_SECONDS = float(os.getenv("SEND_DELAY_SECONDS", "4"))
+
+# Yangi foydalanuvchiga beriladigan bepul sinov kunlari
+TRIAL_DAYS = int(os.getenv("TRIAL_DAYS", "3"))
+
+# To'lov uchun bog'lanadigan admin username (masalan @taxi_admin)
+SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "@admin")
+if SUPPORT_USERNAME and not SUPPORT_USERNAME.startswith("@"):
+    SUPPORT_USERNAME = "@" + SUPPORT_USERNAME

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from datetime import date, datetime
 
 from aiogram import F, Router
 from aiogram.filters import BaseFilter, Command
@@ -45,7 +46,10 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     await state.clear()
     await db.ensure_user(message.from_user.id)
     lang = await _lang(message.from_user.id)
-    await send_menu(message, t(lang, "welcome"))
+    await send_menu(
+        message,
+        t(lang, "welcome") + "\n\n" + t(lang, "trial_note", days=config.TRIAL_DAYS),
+    )
 
 
 @router.message(Command("id"))
@@ -76,6 +80,11 @@ async def on_menu(message: Message, state: FSMContext, action: str) -> None:
 
     if action == "lang":
         await message.answer(t(lang, "lang_prompt"), reply_markup=keyboards.lang_keyboard())
+        return
+
+    if action == "sub":
+        user = await db.get_user(uid)
+        await send_menu(message, _sub_view(lang, user))
         return
 
     if action == "login":
@@ -161,9 +170,29 @@ async def _open_groups(message: Message, state: FSMContext, lang: str, user: dic
     )
 
 
+def _days_left(paid_until: str | None) -> int:
+    try:
+        d = datetime.strptime(paid_until, "%Y-%m-%d").date()
+        return max(0, (d - date.today()).days)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def _sub_view(lang: str, user: dict | None) -> str:
+    paid = user.get("paid_until") if user else None
+    admin = config.SUPPORT_USERNAME
+    if db.subscription_ok(paid):
+        return t(lang, "sub_active", date=paid, days=_days_left(paid), admin=admin)
+    return t(lang, "sub_expired", date=paid or "—", admin=admin)
+
+
 async def _do_start(message: Message, state: FSMContext, lang: str, user: dict) -> None:
     await state.clear()
     uid = message.from_user.id
+    # Obuna tekshiruvi — muddat tugagan bo'lsa ishga tushirmaymiz
+    if not db.subscription_ok(user["paid_until"] if user else None):
+        await send_menu(message, t(lang, "expired_cant_start", admin=config.SUPPORT_USERNAME))
+        return
     selected = await db.get_selected_group_ids(uid)
     problems = []
     if not user or not user["session"]:

@@ -21,6 +21,11 @@ async def _run_broadcast(user_id: int) -> None:
     user = await db.get_user(user_id)
     if not user or not user["active"] or not user["session"] or not user["message"]:
         return
+    # Obuna tugagan bo'lsa yubormaymiz — lekin jobni o'chirmaymiz.
+    # To'lov qilinib paid_until yangilanganda keyingi safar avtomatik davom etadi.
+    if not db.subscription_ok(user["paid_until"]):
+        log.info("user=%s obuna tugagan — yuborilmadi", user_id)
+        return
     chat_ids = list(await db.get_selected_group_ids(user_id))
     if not chat_ids:
         return

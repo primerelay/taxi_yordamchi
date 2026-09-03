@@ -21,6 +21,7 @@ BUTTONS: dict[str, dict[str, str]] = {
     "login":    {"uz": "🔑 Akkauntga kirish",  "ru": "🔑 Войти",          "en": "🔑 Log in"},
     "logout":   {"uz": "🚪 Chiqish",          "ru": "🚪 Выйти",          "en": "🚪 Log out"},
     "lang":     {"uz": "🌐 Til",              "ru": "🌐 Язык",           "en": "🌐 Language"},
+    "sub":      {"uz": "💳 Obuna",            "ru": "💳 Подписка",       "en": "💳 Subscription"},
     "restart":  {"uz": "🔄 Qayta boshlash",   "ru": "🔄 Перезапуск",     "en": "🔄 Restart"},
 }
 
@@ -271,6 +272,35 @@ TEXTS: dict[str, dict[str, str]] = {
         "uz": "Menyudan tanlang 👇",
         "ru": "Выберите в меню 👇",
         "en": "Choose from the menu 👇",
+    },
+    "sub_active": {
+        "uz": "💳 <b>Obuna</b>\n\nHolat: ✅ Faol\nTugash sanasi: <b>{date}</b>\nQolgan: <b>{days}</b> kun\n\n"
+              "To'lovni uzaytirish uchun admin bilan bog'laning: {admin}",
+        "ru": "💳 <b>Подписка</b>\n\nСтатус: ✅ Активна\nДата окончания: <b>{date}</b>\nОсталось: <b>{days}</b> дн.\n\n"
+              "Для продления оплаты свяжитесь с админом: {admin}",
+        "en": "💳 <b>Subscription</b>\n\nStatus: ✅ Active\nEnds on: <b>{date}</b>\nDays left: <b>{days}</b>\n\n"
+              "To extend, contact the admin: {admin}",
+    },
+    "sub_expired": {
+        "uz": "💳 <b>Obuna</b>\n\nHolat: ⛔️ <b>Muddat tugagan</b>\nTugagan sana: {date}\n\n"
+              "⚠️ Bot to'xtatilgan. Ishlashi uchun to'lov qiling.\nAdmin bilan bog'laning: {admin}",
+        "ru": "💳 <b>Подписка</b>\n\nСтатус: ⛔️ <b>Истекла</b>\nДата окончания: {date}\n\n"
+              "⚠️ Бот остановлен. Для работы оплатите.\nСвяжитесь с админом: {admin}",
+        "en": "💳 <b>Subscription</b>\n\nStatus: ⛔️ <b>Expired</b>\nEnded on: {date}\n\n"
+              "⚠️ The bot is stopped. Pay to keep it working.\nContact the admin: {admin}",
+    },
+    "expired_cant_start": {
+        "uz": "⛔️ Obuna muddati tugagan — bot ishlamaydi.\n\nTo'lov uchun admin bilan bog'laning: {admin}",
+        "ru": "⛔️ Срок подписки истёк — бот не работает.\n\nДля оплаты свяжитесь с админом: {admin}",
+        "en": "⛔️ Your subscription has expired — the bot won't run.\n\nTo pay, contact the admin: {admin}",
+    },
+    "trial_note": {
+        "uz": "🎁 Yangi foydalanuvchilarga <b>{days} kunlik bepul sinov</b> beriladi. "
+              "Muddatni «💳 Obuna» tugmasidan ko'ring.",
+        "ru": "🎁 Новым пользователям — <b>{days} дня бесплатно</b>. "
+              "Срок смотрите в «💳 Подписка».",
+        "en": "🎁 New users get a <b>{days}-day free trial</b>. "
+              "Check the term via «💳 Subscription».",
     },
     "id_text": {
         "uz": "🆔 Sizning Telegram ID: <code>{id}</code>",

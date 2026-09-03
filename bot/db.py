@@ -38,6 +38,13 @@ CREATE TABLE IF NOT EXISTS payments (
     paid_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     note    TEXT
 );
+
+CREATE TABLE IF NOT EXISTS templates (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    text       TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 # Mavjud bazaga yangi ustunlarni qo'shish (migratsiya).
@@ -129,6 +136,43 @@ async def set_message(user_id: int, message: str) -> None:
     async with aiosqlite.connect(config.DB_PATH) as db:
         await db.execute(
             "UPDATE users SET message = ? WHERE user_id = ?", (message, user_id)
+        )
+        await db.commit()
+
+
+async def add_template(user_id: int, text: str) -> int:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cur = await db.execute(
+            "INSERT INTO templates (user_id, text) VALUES (?, ?)", (user_id, text)
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def list_templates(user_id: int) -> list[dict]:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT id, text FROM templates WHERE user_id = ? ORDER BY id", (user_id,)
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_template(user_id: int, tpl_id: int) -> Optional[dict]:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT id, text FROM templates WHERE user_id = ? AND id = ?",
+            (user_id, tpl_id),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def delete_template(user_id: int, tpl_id: int) -> None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM templates WHERE user_id = ? AND id = ?", (user_id, tpl_id)
         )
         await db.commit()
 

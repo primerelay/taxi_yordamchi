@@ -9,5 +9,5 @@ class Auth(StatesGroup):
 
 
 class Compose(StatesGroup):
-    waiting_message = State()
+    waiting_template = State()
     waiting_interval = State()

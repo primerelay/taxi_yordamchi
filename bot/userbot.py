@@ -34,8 +34,11 @@ def _code_type_key(code_type) -> str:
     }.get(type(code_type).__name__, "code_sent")
 
 
-async def start_login(user_id: int, phone: str) -> str:
-    """Telefon raqamiga Telegram tasdiqlash kodini yuboradi. Yuborilish usulini qaytaradi."""
+async def start_login(user_id: int, phone: str) -> tuple[str, int]:
+    """
+    Telefon raqamiga kod yuboradi.
+    Qaytaradi: (yuborilish_usuli_kaliti, kod_uzunligi).
+    """
     # Oldingi urinish qolgan bo'lsa tozalaymiz.
     await cancel_login(user_id)
 
@@ -48,7 +51,8 @@ async def start_login(user_id: int, phone: str) -> str:
         type(getattr(sent, "next_type", None)).__name__,
     )
     _login_clients[user_id] = (client, phone, sent.phone_code_hash)
-    return _code_type_key(sent.type)
+    length = getattr(sent.type, "length", 5) or 5
+    return _code_type_key(sent.type), length
 
 
 

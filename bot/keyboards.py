@@ -41,6 +41,22 @@ def phone_request(lang: str) -> ReplyKeyboardMarkup:
     )
 
 
+def code_pad() -> InlineKeyboardMarkup:
+    """Kod kiritish uchun raqamli klaviatura (kod chatga matn sifatida yozilmaydi)."""
+    def d(n):
+        return InlineKeyboardButton(text=str(n), callback_data=f"cd:{n}")
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [d(1), d(2), d(3)],
+        [d(4), d(5), d(6)],
+        [d(7), d(8), d(9)],
+        [
+            InlineKeyboardButton(text="⌫", callback_data="cd:back"),
+            d(0),
+            InlineKeyboardButton(text="✅", callback_data="cd:ok"),
+        ],
+    ])
+
+
 def lang_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -48,6 +64,19 @@ def lang_keyboard() -> InlineKeyboardMarkup:
             for code, name in LANG_NAMES.items()
         ]
     )
+
+
+def templates_keyboard(lang: str, templates: list[dict], active_text: str | None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    for tp in templates:
+        label = tp["text"].splitlines()[0][:32] if tp["text"] else "—"
+        mark = "✅ " if active_text and tp["text"] == active_text else "▫️ "
+        rows.append([
+            InlineKeyboardButton(text=mark + label, callback_data=f"tpl:{tp['id']}"),
+            InlineKeyboardButton(text="🗑", callback_data=f"tpldel:{tp['id']}"),
+        ])
+    rows.append([InlineKeyboardButton(text=t(lang, "tpl_new_btn"), callback_data="tplnew")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def groups_keyboard(lang: str, groups: list[dict], selected: set[int]) -> InlineKeyboardMarkup:

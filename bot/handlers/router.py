@@ -97,8 +97,8 @@ async def on_menu(message: Message, state: FSMContext, action: str) -> None:
         return
 
     if action == "message":
-        await state.set_state(Compose.waiting_message)
-        await message.answer(t(lang, "msg_prompt"))
+        text, kb = await _templates_view(uid, lang)
+        await message.answer(text, reply_markup=kb)
 
     elif action == "interval":
         await state.set_state(Compose.waiting_interval)
@@ -118,6 +118,24 @@ async def on_menu(message: Message, state: FSMContext, action: str) -> None:
 
     elif action == "status":
         await _show_status(message, lang, user)
+
+
+def _preview(text: str, limit: int = 120) -> str:
+    text = text.strip()
+    return text if len(text) <= limit else text[:limit] + "…"
+
+
+async def _templates_view(user_id: int, lang: str) -> tuple[str, object]:
+    """Shablonlar menyusi matni + inline klaviaturasini qaytaradi."""
+    user = await db.get_user(user_id)
+    active = (user["message"] if user else None) or None
+    templates = await db.list_templates(user_id)
+    text = t(lang, "tpl_menu")
+    if active:
+        text += f"\n\n{t(lang, 'tpl_active_label')}\n<code>{_preview(active)}</code>"
+    else:
+        text += f"\n\n{t(lang, 'tpl_none_active')}"
+    return text, keyboards.templates_keyboard(lang, templates, active)
 
 
 async def _open_groups(message: Message, state: FSMContext, lang: str, user: dict) -> None:
@@ -222,27 +240,119 @@ async def on_phone(message: Message, state: FSMContext) -> None:
 
     await message.answer(t(lang, "sending_code"))
     try:
-        delivery_key = await userbot.start_login(message.from_user.id, phone)
+        delivery_key, code_len = await userbot.start_login(message.from_user.id, phone)
     except Exception as e:  # noqa: BLE001
         await message.answer(t(lang, "login_error", err=e))
         return
 
-    await state.update_data(phone=phone)
+    await state.update_data(phone=phone, code_buf="", code_len=code_len, delivery_key=delivery_key)
     await state.set_state(Auth.waiting_code)
-    await message.answer(f"{t(lang, delivery_key)}\n\n{t(lang, 'code_prompt')}")
+    await message.answer(
+        _code_msg(lang, delivery_key, "", code_len),
+        reply_markup=keyboards.code_pad(),
+    )
+
+
+def _code_msg(lang: str, delivery_key: str, buf: str, length: int) -> str:
+    shown = " ".join(list(buf) + ["•"] * max(0, length - len(buf)))
+    return (
+        f"{t(lang, delivery_key)}\n\n"
+        f"{t(lang, 'code_pad_prompt')}\n\n"
+        f"{t(lang, 'code_label')}:  {shown}"
+    )
+
+
+@router.callback_query(Auth.waiting_code, F.data.startswith("cd:"))
+async def cb_code_pad(cb: CallbackQuery, state: FSMContext) -> None:
+    lang = await _lang(cb.from_user.id)
+    data = await state.get_data()
+    buf = data.get("code_buf", "")
+    length = data.get("code_len", 5)
+    delivery_key = data.get("delivery_key", "code_sent")
+    key = cb.data.split(":", 1)[1]
+
+    if key == "back":
+        buf = buf[:-1]
+    elif key.isdigit() and len(buf) < length:
+        buf += key
+    await state.update_data(code_buf=buf)
+
+    # Yuborish: ✅ bosilganda yoki kod to'lganda
+    if key != "ok" and len(buf) < length:
+        try:
+            await cb.message.edit_text(
+                _code_msg(lang, delivery_key, buf, length),
+                reply_markup=keyboards.code_pad(),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        await cb.answer()
+        return
+
+    if not buf:
+        await cb.answer()
+        return
+
+    # Kodni tekshirish
+    try:
+        status, session = await userbot.confirm_code(cb.from_user.id, buf)
+    except Exception as e:  # noqa: BLE001
+        await state.update_data(code_buf="")
+        try:
+            await cb.message.edit_text(
+                f"❌ {e}\n\n" + _code_msg(lang, delivery_key, "", length),
+                reply_markup=keyboards.code_pad(),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        await cb.answer(t(lang, "code_empty"), show_alert=False)
+        return
+
+    if status == "password":
+        await state.set_state(Auth.waiting_password)
+        await cb.message.answer(t(lang, "twofa_prompt"))
+        await cb.answer()
+        return
+
+    await db.set_session(cb.from_user.id, data.get("phone", ""), session)
+    await state.clear()
+    try:
+        await cb.message.edit_text(t(lang, "login_success"))
+    except Exception:  # noqa: BLE001
+        pass
+    await cb.message.answer(
+        t(lang, "welcome"),
+        reply_markup=keyboards.main_menu(lang, True),
+    )
+    await cb.answer()
 
 
 @router.message(Auth.waiting_code)
 async def on_code(message: Message, state: FSMContext) -> None:
-    lang = await _lang(message.from_user.id)
+    """Matn bilan kiritilgan kod. Bo'sh joy bilan bo'lsa ishlaydi; matn-raqam bo'lsa
+    Telegram bekor qilgan bo'ladi — yangi kod yuborib, tugmalarga yo'naltiramiz."""
+    uid = message.from_user.id
+    lang = await _lang(uid)
     code = re.sub(r"\D", "", message.text or "")
     if not code:
         await message.answer(t(lang, "code_empty"))
         return
+
     try:
-        status, session = await userbot.confirm_code(message.from_user.id, code)
-    except Exception as e:  # noqa: BLE001
-        await message.answer(t(lang, "code_error", err=e))
+        status, session = await userbot.confirm_code(uid, code)
+    except Exception:  # noqa: BLE001 — kod bekor bo'lgan yoki xato
+        data = await state.get_data()
+        phone = data.get("phone", "")
+        try:
+            delivery_key, code_len = await userbot.start_login(uid, phone)  # yangi kod
+        except Exception as e:  # noqa: BLE001
+            await message.answer(t(lang, "login_error", err=e))
+            return
+        await state.update_data(code_buf="", code_len=code_len, delivery_key=delivery_key)
+        await message.answer(
+            t(lang, "code_pasted_hint") + "\n\n" + _code_msg(lang, delivery_key, "", code_len),
+            reply_markup=keyboards.code_pad(),
+        )
         return
 
     if status == "password":
@@ -251,7 +361,7 @@ async def on_code(message: Message, state: FSMContext) -> None:
         return
 
     data = await state.get_data()
-    await db.set_session(message.from_user.id, data.get("phone", ""), session)
+    await db.set_session(uid, data.get("phone", ""), session)
     await state.clear()
     await send_menu(message, t(lang, "login_success"))
 
@@ -270,17 +380,58 @@ async def on_password(message: Message, state: FSMContext) -> None:
     await send_menu(message, t(lang, "login_success"))
 
 
-# ============================ MATN KIRITISH (state) ============================
-@router.message(Compose.waiting_message)
-async def on_message_text(message: Message, state: FSMContext) -> None:
+# ============================ XABAR SHABLONLARI ============================
+@router.callback_query(F.data == "tplnew")
+async def cb_tpl_new(cb: CallbackQuery, state: FSMContext) -> None:
+    lang = await _lang(cb.from_user.id)
+    await state.set_state(Compose.waiting_template)
+    await cb.message.answer(t(lang, "tpl_prompt"))
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("tpl:"))
+async def cb_tpl_activate(cb: CallbackQuery, state: FSMContext) -> None:
+    lang = await _lang(cb.from_user.id)
+    tpl_id = int(cb.data.split(":", 1)[1])
+    tp = await db.get_template(cb.from_user.id, tpl_id)
+    if not tp:
+        await cb.answer()
+        return
+    await db.set_message(cb.from_user.id, tp["text"])  # faollashtirish
+    text, kb = await _templates_view(cb.from_user.id, lang)
+    try:
+        await cb.message.edit_text(text, reply_markup=kb)
+    except Exception:  # noqa: BLE001
+        pass
+    await cb.answer(t(lang, "tpl_activated"))
+
+
+@router.callback_query(F.data.startswith("tpldel:"))
+async def cb_tpl_delete(cb: CallbackQuery, state: FSMContext) -> None:
+    lang = await _lang(cb.from_user.id)
+    tpl_id = int(cb.data.split(":", 1)[1])
+    await db.delete_template(cb.from_user.id, tpl_id)
+    text, kb = await _templates_view(cb.from_user.id, lang)
+    try:
+        await cb.message.edit_text(text, reply_markup=kb)
+    except Exception:  # noqa: BLE001
+        pass
+    await cb.answer(t(lang, "tpl_deleted"))
+
+
+@router.message(Compose.waiting_template)
+async def on_template_text(message: Message, state: FSMContext) -> None:
     lang = await _lang(message.from_user.id)
     text = message.text or message.caption
     if not text:
         await message.answer(t(lang, "msg_empty"))
         return
-    await db.set_message(message.from_user.id, text)
+    await db.add_template(message.from_user.id, text)
+    await db.set_message(message.from_user.id, text)  # yangi shablonni darhol faollashtirish
     await state.clear()
-    await send_menu(message, t(lang, "msg_saved"))
+    await message.answer(t(lang, "tpl_saved"))
+    view_text, kb = await _templates_view(message.from_user.id, lang)
+    await message.answer(view_text, reply_markup=kb)
 
 
 @router.message(Compose.waiting_interval)

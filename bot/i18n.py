@@ -54,6 +54,49 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "✍️ Отправьте текст сообщения для рассылки в группы:",
         "en": "✍️ Send the message text to broadcast to the groups:",
     },
+    "tpl_menu": {
+        "uz": "📄 <b>Xabar shablonlari</b>\n\nTayyor xabarni tanlang — u faollashadi (✅ = hozir yuboriladigan). "
+              "🗑 — o'chirish. Yangi qo'shish uchun «➕».",
+        "ru": "📄 <b>Шаблоны сообщений</b>\n\nВыберите готовое сообщение — оно станет активным (✅ = отправляется сейчас). "
+              "🗑 — удалить. Добавить новый — «➕».",
+        "en": "📄 <b>Message templates</b>\n\nPick a ready message — it becomes active (✅ = currently sending). "
+              "🗑 — delete. Add a new one with «➕».",
+    },
+    "tpl_active_label": {
+        "uz": "📌 Hozir yuboriladigan xabar:",
+        "ru": "📌 Сейчас отправляется:",
+        "en": "📌 Currently sending:",
+    },
+    "tpl_none_active": {
+        "uz": "⚠️ Hali faol xabar yo'q. Shablon tanlang yoki «➕» bilan yangisini qo'shing.",
+        "ru": "⚠️ Активного сообщения пока нет. Выберите шаблон или добавьте новый «➕».",
+        "en": "⚠️ No active message yet. Pick a template or add a new one «➕».",
+    },
+    "tpl_new_btn": {
+        "uz": "➕ Yangi shablon",
+        "ru": "➕ Новый шаблон",
+        "en": "➕ New template",
+    },
+    "tpl_prompt": {
+        "uz": "✍️ Yangi shablon matnini yuboring.\n\nMasalan:\n<i>Farg'ona → Toshkent, 4 o'rin bor 🚕 tel: ...</i>",
+        "ru": "✍️ Отправьте текст нового шаблона.\n\nНапример:\n<i>Фергана → Ташкент, 4 места 🚕 тел: ...</i>",
+        "en": "✍️ Send the text of the new template.\n\nExample:\n<i>Fergana → Tashkent, 4 seats 🚕 tel: ...</i>",
+    },
+    "tpl_saved": {
+        "uz": "✅ Shablon saqlandi va faollashtirildi.",
+        "ru": "✅ Шаблон сохранён и активирован.",
+        "en": "✅ Template saved and activated.",
+    },
+    "tpl_activated": {
+        "uz": "✅ Faollashtirildi",
+        "ru": "✅ Активировано",
+        "en": "✅ Activated",
+    },
+    "tpl_deleted": {
+        "uz": "🗑 O'chirildi",
+        "ru": "🗑 Удалено",
+        "en": "🗑 Deleted",
+    },
     "interval_prompt": {
         "uz": "⏱ Interval necha daqiqada bo'lsin? Raqam yuboring (eng kam {min} daqiqa).",
         "ru": "⏱ Через сколько минут повторять? Отправьте число (минимум {min} мин).",
@@ -131,6 +174,30 @@ TEXTS: dict[str, dict[str, str]] = {
         "uz": "⏳ Kod yuborilmoqda...",
         "ru": "⏳ Отправка кода...",
         "en": "⏳ Sending code...",
+    },
+    "code_pad_prompt": {
+        "uz": "✉️ Kelgan kodni pastdagi tugmalar bilan kiriting 👇\n"
+              "(shu usulda Telegram kodni bekor qilmaydi — bo'sh joy qo'yish shart emas)",
+        "ru": "✉️ Введите полученный код кнопками ниже 👇\n"
+              "(так Telegram не аннулирует код — пробелы не нужны)",
+        "en": "✉️ Enter the received code using the buttons below 👇\n"
+              "(this way Telegram won't invalidate the code — no spaces needed)",
+    },
+    "code_label": {
+        "uz": "🔢 Kod",
+        "ru": "🔢 Код",
+        "en": "🔢 Code",
+    },
+    "code_pasted_hint": {
+        "uz": "❌ Bu kod qabul qilinmadi.\n\nAgar kodni <b>matn qilib</b> (yozib yoki paste qilib) "
+              "yuborgan bo'lsangiz — Telegram uni avtomatik bekor qiladi. Sizga <b>yangi kod</b> yubordik.\n\n"
+              "👇 Endi kodni pastdagi tugmalar bilan kiriting — shunda bekor bo'lmaydi.",
+        "ru": "❌ Этот код не принят.\n\nЕсли вы отправили код <b>текстом</b> (набрали или вставили) — "
+              "Telegram автоматически аннулирует его. Мы отправили вам <b>новый код</b>.\n\n"
+              "👇 Теперь введите код кнопками ниже — так он не аннулируется.",
+        "en": "❌ This code was not accepted.\n\nIf you sent the code <b>as text</b> (typed or pasted) — "
+              "Telegram automatically invalidates it. We've sent you a <b>new code</b>.\n\n"
+              "👇 Now enter the code using the buttons below — this way it won't be invalidated.",
     },
     "code_prompt": {
         "uz": "✉️ Kelgan kodni kiriting.\n\n⚠️ <b>Muhim:</b> kodni raqamlar orasiga bo'sh joy "

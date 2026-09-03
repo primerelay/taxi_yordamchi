@@ -27,15 +27,14 @@ export default function Users() {
 
   useEffect(() => {
     setLoading(true)
-    api.users({ search, status, sort, page })
-      .then(setData)
-      .finally(() => setLoading(false))
+    api.users({ search, status, sort, page }).then(setData).finally(() => setLoading(false))
   }, [search, status, sort, page])
 
   const update = (patch) => {
     const next = { search, status, sort, page: 1, ...patch }
     setSp(Object.fromEntries(Object.entries(next).filter(([, v]) => v && v !== 'all' && v !== '')))
   }
+  const go = (p) => setSp({ search, status, sort, page: p })
 
   return (
     <div>
@@ -43,78 +42,106 @@ export default function Users() {
         Foydalanuvchilar <span className="text-base font-normal text-slate-400">({data?.total ?? 0})</span>
       </h1>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2.5">
+      {/* Filtrlar */}
+      <div className="mt-4 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
         <form
           onSubmit={(e) => { e.preventDefault(); update({ search: searchInput }) }}
-          className="flex gap-2"
+          className="flex w-full gap-2 sm:w-auto"
         >
           <input
-            className={inputCls + ' w-56'}
+            className={inputCls + ' flex-1 sm:w-56'}
             placeholder="ID, ism, username, tel..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
           />
           <button className={btnCls}>Qidirish</button>
         </form>
-        <select className={inputCls + ' w-auto'} value={status} onChange={(e) => update({ status: e.target.value })}>
-          {STATUS_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
-        <select className={inputCls + ' w-auto'} value={sort} onChange={(e) => update({ sort: e.target.value })}>
-          {SORT_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
+        <div className="flex gap-2.5">
+          <select className={inputCls + ' flex-1 sm:w-auto'} value={status} onChange={(e) => update({ status: e.target.value })}>
+            {STATUS_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <select className={inputCls + ' flex-1 sm:w-auto'} value={sort} onChange={(e) => update({ sort: e.target.value })}>
+            {SORT_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
         <button className={btnGhostCls} onClick={() => { setSearchInput(''); setSp({}) }}>Tozalash</button>
       </div>
 
       {loading ? <Spinner /> : (
-        <div className="mt-4 overflow-hidden rounded-xl border border-slate-800">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-900 text-xs uppercase tracking-wide text-slate-400">
-              <tr>
-                {['ID', 'Ism', 'Username', 'Telefon', 'Guruh', 'Holat', "To'lov", 'Muddat', 'Oxirgi faollik'].map((h) => (
-                  <th key={h} className="px-3.5 py-3 text-left font-semibold">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.users.map((u) => (
-                <tr
-                  key={u.user_id}
-                  onClick={() => navigate(`/users/${u.user_id}`)}
-                  className="cursor-pointer border-t border-slate-800 bg-slate-800/40 hover:bg-slate-700/50"
-                >
-                  <td className="px-3.5 py-2.5">{u.user_id}</td>
-                  <td className="px-3.5 py-2.5">{u.full_name || '—'}</td>
-                  <td className="px-3.5 py-2.5">{u.username ? '@' + u.username : '—'}</td>
-                  <td className="px-3.5 py-2.5">{u.phone || '—'}</td>
-                  <td className="px-3.5 py-2.5">{u.groups_count}</td>
-                  <td className="px-3.5 py-2.5"><MailBadge user={u} /></td>
-                  <td className="px-3.5 py-2.5"><PayBadge status={u.pay_status} /></td>
-                  <td className="px-3.5 py-2.5">{u.paid_until || '—'}</td>
-                  <td className="px-3.5 py-2.5 text-slate-400">{u.last_active || '—'}</td>
-                </tr>
-              ))}
-              {data.users.length === 0 && (
-                <tr><td colSpan={9} className="px-3.5 py-8 text-center text-slate-400">Topilmadi</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+        <>
+          {/* Mobil: kartochkalar */}
+          <div className="mt-4 space-y-2.5 md:hidden">
+            {data.users.map((u) => (
+              <button
+                key={u.user_id}
+                onClick={() => navigate(`/users/${u.user_id}`)}
+                className="block w-full rounded-xl border border-slate-800 bg-slate-800/50 p-4 text-left active:bg-slate-700/50"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-semibold">{u.full_name || `ID ${u.user_id}`}</span>
+                  <PayBadge status={u.pay_status} />
+                </div>
+                <div className="mt-1 truncate text-xs text-slate-400">
+                  {u.username ? '@' + u.username + ' · ' : ''}ID {u.user_id}
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-300">
+                  <span>📱 {u.phone || '—'}</span>
+                  <span>👥 {u.groups_count}</span>
+                  <MailBadge user={u} />
+                </div>
+                <div className="mt-1.5 text-[11px] text-slate-500">
+                  Muddat: {u.paid_until || '—'} · Faollik: {u.last_active || '—'}
+                </div>
+              </button>
+            ))}
+            {data.users.length === 0 && (
+              <div className="rounded-xl border border-slate-800 py-8 text-center text-slate-400">Topilmadi</div>
+            )}
+          </div>
 
-      {data && data.pages > 1 && (
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            className={btnGhostCls}
-            disabled={page <= 1}
-            onClick={() => setSp({ search, status, sort, page: page - 1 })}
-          >← Oldingi</button>
-          <span className="text-slate-400">{page} / {data.pages}</span>
-          <button
-            className={btnGhostCls}
-            disabled={page >= data.pages}
-            onClick={() => setSp({ search, status, sort, page: page + 1 })}
-          >Keyingi →</button>
-        </div>
+          {/* Desktop: jadval */}
+          <div className="mt-4 hidden overflow-x-auto rounded-xl border border-slate-800 md:block">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-900 text-xs uppercase tracking-wide text-slate-400">
+                <tr>
+                  {['ID', 'Ism', 'Username', 'Telefon', 'Guruh', 'Holat', "To'lov", 'Muddat', 'Oxirgi faollik'].map((h) => (
+                    <th key={h} className="px-3.5 py-3 text-left font-semibold whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.users.map((u) => (
+                  <tr
+                    key={u.user_id}
+                    onClick={() => navigate(`/users/${u.user_id}`)}
+                    className="cursor-pointer border-t border-slate-800 bg-slate-800/40 hover:bg-slate-700/50"
+                  >
+                    <td className="px-3.5 py-2.5">{u.user_id}</td>
+                    <td className="px-3.5 py-2.5">{u.full_name || '—'}</td>
+                    <td className="px-3.5 py-2.5">{u.username ? '@' + u.username : '—'}</td>
+                    <td className="px-3.5 py-2.5">{u.phone || '—'}</td>
+                    <td className="px-3.5 py-2.5">{u.groups_count}</td>
+                    <td className="px-3.5 py-2.5"><MailBadge user={u} /></td>
+                    <td className="px-3.5 py-2.5"><PayBadge status={u.pay_status} /></td>
+                    <td className="px-3.5 py-2.5 whitespace-nowrap">{u.paid_until || '—'}</td>
+                    <td className="px-3.5 py-2.5 whitespace-nowrap text-slate-400">{u.last_active || '—'}</td>
+                  </tr>
+                ))}
+                {data.users.length === 0 && (
+                  <tr><td colSpan={9} className="px-3.5 py-8 text-center text-slate-400">Topilmadi</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {data.pages > 1 && (
+            <div className="mt-4 flex items-center justify-center gap-3 sm:justify-start">
+              <button className={btnGhostCls} disabled={page <= 1} onClick={() => go(page - 1)}>← Oldingi</button>
+              <span className="text-slate-400">{page} / {data.pages}</span>
+              <button className={btnGhostCls} disabled={page >= data.pages} onClick={() => go(page + 1)}>Keyingi →</button>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

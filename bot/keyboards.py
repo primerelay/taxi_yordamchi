@@ -1,4 +1,4 @@
-"""Inline va reply klaviaturalar."""
+"""Inline va doimiy reply klaviaturalar (ko'p tilli)."""
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -6,33 +6,51 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
 )
 
+from . import i18n
+from .i18n import BUTTONS, LANG_NAMES, t
 
-def main_menu(logged_in: bool, active: bool) -> InlineKeyboardMarkup:
-    rows: list[list[InlineKeyboardButton]] = []
+
+def _btn(action: str, lang: str) -> KeyboardButton:
+    return KeyboardButton(text=BUTTONS[action][i18n.normalize(lang)])
+
+
+def main_menu(lang: str, logged_in: bool) -> ReplyKeyboardMarkup:
+    """Chat pastida doim turadigan asosiy menyu."""
     if not logged_in:
-        rows.append([InlineKeyboardButton(text="🔑 Akkauntga kirish", callback_data="login")])
+        rows = [[_btn("login", lang)], [_btn("lang", lang), _btn("restart", lang)]]
     else:
-        rows.append([InlineKeyboardButton(text="✍️ Xabarni belgilash", callback_data="set_message")])
-        rows.append([InlineKeyboardButton(text="👥 Guruhlarni tanlash", callback_data="pick_groups")])
-        rows.append([InlineKeyboardButton(text="⏱ Interval belgilash", callback_data="set_interval")])
-        if active:
-            rows.append([InlineKeyboardButton(text="⏹ To'xtatish", callback_data="stop")])
-        else:
-            rows.append([InlineKeyboardButton(text="▶️ Boshlash", callback_data="start")])
-        rows.append([InlineKeyboardButton(text="ℹ️ Holat", callback_data="status")])
-        rows.append([InlineKeyboardButton(text="🚪 Chiqish", callback_data="logout")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def phone_request() -> ReplyKeyboardMarkup:
+        rows = [
+            [_btn("message", lang), _btn("groups", lang)],
+            [_btn("interval", lang), _btn("status", lang)],
+            [_btn("start", lang), _btn("stop", lang)],
+            [_btn("lang", lang), _btn("logout", lang)],
+            [_btn("restart", lang)],
+        ]
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📱 Raqamni yuborish", request_contact=True)]],
+        keyboard=rows,
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def phone_request(lang: str) -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=t(lang, "send_phone_btn"), request_contact=True)]],
         resize_keyboard=True,
         one_time_keyboard=True,
     )
 
 
-def groups_keyboard(groups: list[dict], selected: set[int]) -> InlineKeyboardMarkup:
+def lang_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=name, callback_data=f"setlang:{code}")]
+            for code, name in LANG_NAMES.items()
+        ]
+    )
+
+
+def groups_keyboard(lang: str, groups: list[dict], selected: set[int]) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     for g in groups:
         mark = "✅ " if g["chat_id"] in selected else "▫️ "
@@ -42,11 +60,5 @@ def groups_keyboard(groups: list[dict], selected: set[int]) -> InlineKeyboardMar
                 callback_data=f"g:{g['chat_id']}",
             )
         ])
-    rows.append([InlineKeyboardButton(text="✔️ Tayyor", callback_data="groups_done")])
+    rows.append([InlineKeyboardButton(text=t(lang, "done_btn"), callback_data="groups_done")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def back_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="⬅️ Menyu", callback_data="menu")]]
-    )

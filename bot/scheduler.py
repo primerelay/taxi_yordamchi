@@ -49,8 +49,10 @@ def add_user_job(user_id: int, interval_minutes: int) -> None:
         replace_existing=True,
         max_instances=1,
         coalesce=True,
-        next_run_time=None,  # birinchi yuborish interval o'tgach
     )
+    # Eslatma: next_run_time ko'rsatilmaydi — APScheduler birinchi ishga tushirishni
+    # avtomatik "hozir + interval" qilib belgilaydi. (None berilsa job PAUZA bo'lib qoladi!)
+    # Birinchi darhol yuborish esa alohida run_now() orqali amalga oshadi.
 
 
 def remove_user_job(user_id: int) -> None:

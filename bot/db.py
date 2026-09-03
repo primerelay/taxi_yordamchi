@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
     active           INTEGER NOT NULL DEFAULT 0,
     full_name        TEXT,
     username         TEXT,
+    lang             TEXT NOT NULL DEFAULT 'uz',
     last_active      TEXT,                  -- oxirgi faollik (DAU uchun)
     paid_until       TEXT,                  -- to'lov amal qilish sanasi (YYYY-MM-DD)
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS payments (
 _MIGRATIONS = {
     "full_name": "ALTER TABLE users ADD COLUMN full_name TEXT",
     "username": "ALTER TABLE users ADD COLUMN username TEXT",
+    "lang": "ALTER TABLE users ADD COLUMN lang TEXT NOT NULL DEFAULT 'uz'",
     "last_active": "ALTER TABLE users ADD COLUMN last_active TEXT",
     "paid_until": "ALTER TABLE users ADD COLUMN paid_until TEXT",
 }
@@ -107,6 +109,19 @@ async def clear_session(user_id: int) -> None:
             "UPDATE users SET session = NULL, active = 0 WHERE user_id = ?",
             (user_id,),
         )
+        await db.commit()
+
+
+async def get_lang(user_id: int) -> str:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cur = await db.execute("SELECT lang FROM users WHERE user_id = ?", (user_id,))
+        row = await cur.fetchone()
+        return (row[0] if row and row[0] else "uz")
+
+
+async def set_lang(user_id: int, lang: str) -> None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute("UPDATE users SET lang = ? WHERE user_id = ?", (lang, user_id))
         await db.commit()
 
 

@@ -102,7 +102,8 @@ export default function UserDetail() {
 
       <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">To'lovlar tarixi</h2>
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[380px] text-sm">
           <thead className="text-xs uppercase text-slate-400">
             <tr>{['Sana', 'Summa', 'Muddat', 'Izoh'].map((h) => <th key={h} className="px-2 py-2 text-left">{h}</th>)}</tr>
           </thead>
@@ -120,12 +121,14 @@ export default function UserDetail() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {u.groups.length > 0 && (
         <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Tanlangan guruhlar</h2>
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[320px] text-sm">
             <thead className="text-xs uppercase text-slate-400">
               <tr><th className="px-2 py-2 text-left">Chat ID</th><th className="px-2 py-2 text-left">Nomi</th></tr>
             </thead>
@@ -138,6 +141,7 @@ export default function UserDetail() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

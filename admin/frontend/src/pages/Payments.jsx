@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api.js'
 import { fmtMoney } from '../format.js'
@@ -16,9 +17,7 @@ export default function Payments() {
 
   useEffect(() => {
     setLoading(true)
-    api.payments({ date_from: dateFrom, date_to: dateTo })
-      .then(setData)
-      .finally(() => setLoading(false))
+    api.payments({ date_from: dateFrom, date_to: dateTo }).then(setData).finally(() => setLoading(false))
   }, [dateFrom, dateTo])
 
   const apply = (e) => {
@@ -29,17 +28,26 @@ export default function Payments() {
     setSp(next)
   }
 
+  const userName = (p) => p.full_name || (p.username ? '@' + p.username : p.user_id)
+
   return (
     <div>
       <h1 className="text-xl font-bold">To'lovlar va hisob-kitob</h1>
 
-      <form onSubmit={apply} className="mt-4 flex flex-wrap items-center gap-2.5">
-        <label className="text-sm text-slate-400">Dan</label>
-        <input className={inputCls + ' w-auto'} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        <label className="text-sm text-slate-400">Gacha</label>
-        <input className={inputCls + ' w-auto'} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-        <button className={btnCls}>Filtrlash</button>
-        <button type="button" className={btnGhostCls} onClick={() => { setFrom(''); setTo(''); setSp({}) }}>Tozalash</button>
+      {/* Filtr */}
+      <form onSubmit={apply} className="mt-4 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="flex items-center gap-2">
+          <label className="w-10 text-sm text-slate-400 sm:w-auto">Dan</label>
+          <input className={inputCls + ' flex-1 sm:w-auto'} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="w-10 text-sm text-slate-400 sm:w-auto">Gacha</label>
+          <input className={inputCls + ' flex-1 sm:w-auto'} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        </div>
+        <div className="flex gap-2.5">
+          <button className={btnCls + ' flex-1 sm:flex-none'}>Filtrlash</button>
+          <button type="button" className={btnGhostCls} onClick={() => { setFrom(''); setTo(''); setSp({}) }}>Tozalash</button>
+        </div>
       </form>
 
       {loading || !data ? <Spinner /> : (
@@ -49,26 +57,44 @@ export default function Payments() {
             <Card label="To'lovlar soni" value={data.payments.length} />
           </div>
 
-          <div className="mt-4 overflow-hidden rounded-xl border border-slate-800">
+          {/* Mobil: kartochkalar */}
+          <div className="mt-4 space-y-2.5 md:hidden">
+            {data.payments.map((p) => (
+              <div key={p.id} className="rounded-xl border border-slate-800 bg-slate-800/50 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <Link to={`/users/${p.user_id}`} className="truncate font-semibold text-sky-400">{userName(p)}</Link>
+                  <span className="whitespace-nowrap font-semibold">{fmtMoney(p.amount)}</span>
+                </div>
+                <div className="mt-1 text-xs text-slate-400">
+                  {p.paid_at} · {p.months || '—'} oy{p.phone ? ' · ' + p.phone : ''}
+                </div>
+                {p.note && <div className="mt-1 text-xs text-slate-300">{p.note}</div>}
+              </div>
+            ))}
+            {data.payments.length === 0 && (
+              <div className="rounded-xl border border-slate-800 py-8 text-center text-slate-400">To'lovlar topilmadi</div>
+            )}
+          </div>
+
+          {/* Desktop: jadval */}
+          <div className="mt-4 hidden overflow-x-auto rounded-xl border border-slate-800 md:block">
             <table className="w-full text-sm">
               <thead className="bg-slate-900 text-xs uppercase tracking-wide text-slate-400">
                 <tr>
                   {['Sana', 'Foydalanuvchi', 'Telefon', 'Summa', 'Muddat', 'Izoh'].map((h) => (
-                    <th key={h} className="px-3.5 py-3 text-left font-semibold">{h}</th>
+                    <th key={h} className="px-3.5 py-3 text-left font-semibold whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {data.payments.map((p) => (
                   <tr key={p.id} className="border-t border-slate-800 bg-slate-800/40">
-                    <td className="px-3.5 py-2.5">{p.paid_at}</td>
+                    <td className="px-3.5 py-2.5 whitespace-nowrap">{p.paid_at}</td>
                     <td className="px-3.5 py-2.5">
-                      <Link to={`/users/${p.user_id}`} className="text-sky-400 hover:underline">
-                        {p.full_name || (p.username ? '@' + p.username : p.user_id)}
-                      </Link>
+                      <Link to={`/users/${p.user_id}`} className="text-sky-400 hover:underline">{userName(p)}</Link>
                     </td>
                     <td className="px-3.5 py-2.5">{p.phone || '—'}</td>
-                    <td className="px-3.5 py-2.5">{fmtMoney(p.amount)}</td>
+                    <td className="px-3.5 py-2.5 whitespace-nowrap">{fmtMoney(p.amount)}</td>
                     <td className="px-3.5 py-2.5">{p.months || '—'} oy</td>
                     <td className="px-3.5 py-2.5">{p.note || '—'}</td>
                   </tr>

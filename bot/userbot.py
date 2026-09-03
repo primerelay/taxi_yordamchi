@@ -22,15 +22,35 @@ def _new_client(session: str = "") -> TelegramClient:
 
 
 # ---------------------------------------------------------------- login flow
-async def start_login(user_id: int, phone: str) -> None:
-    """Telefon raqamiga Telegram tasdiqlash kodini yuboradi."""
+def _code_type_key(code_type) -> str:
+    """Kod yetkazish usuli uchun i18n kalitini qaytaradi (tarjima handlerda)."""
+    return {
+        "SentCodeTypeApp": "code_app",
+        "SentCodeTypeSms": "code_sms",
+        "SentCodeTypeCall": "code_call",
+        "SentCodeTypeMissedCall": "code_missed",
+        "SentCodeTypeFlashCall": "code_call",
+        "SentCodeTypeEmail": "code_sent",
+    }.get(type(code_type).__name__, "code_sent")
+
+
+async def start_login(user_id: int, phone: str) -> str:
+    """Telefon raqamiga Telegram tasdiqlash kodini yuboradi. Yuborilish usulini qaytaradi."""
     # Oldingi urinish qolgan bo'lsa tozalaymiz.
     await cancel_login(user_id)
 
     client = _new_client()
     await client.connect()
     sent = await client.send_code_request(phone)
+    log.info(
+        "login: user=%s phone=%s type=%s next_type=%s",
+        user_id, phone, type(sent.type).__name__,
+        type(getattr(sent, "next_type", None)).__name__,
+    )
     _login_clients[user_id] = (client, phone, sent.phone_code_hash)
+    return _code_type_key(sent.type)
+
+
 
 
 async def confirm_code(user_id: int, code: str) -> tuple[str, str | None]:

@@ -1,4 +1,4 @@
-"""Barcha bot handlerlari."""
+"""Barcha bot handlerlari — doimiy (reply) menyu + ko'p tillilik."""
 from __future__ import annotations
 
 import asyncio
@@ -6,36 +6,37 @@ import logging
 import re
 
 from aiogram import F, Router
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import BaseFilter, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from .. import config, db, keyboards, scheduler, userbot
+from .. import config, db, i18n, keyboards, scheduler, userbot
+from ..i18n import button_action, t
 from ..states import Auth, Compose
 
 log = logging.getLogger(__name__)
 router = Router()
 
 
+# --------------------------------------------------- menyu tugmasi filtri
+class MenuButton(BaseFilter):
+    """Har qanday tildagi menyu tugmasini aniqlaydi va 'action' ni inject qiladi."""
+
+    async def __call__(self, message: Message) -> bool | dict:
+        action = button_action(message.text)
+        return {"action": action} if action else False
+
+
 # ------------------------------------------------------------------ helpers
-async def show_menu(target: Message | CallbackQuery, text: str | None = None) -> None:
-    user_id = target.from_user.id
-    user = await db.get_user(user_id)
+async def send_menu(message: Message, text: str) -> None:
+    user = await db.get_user(message.from_user.id)
+    lang = (user["lang"] if user else None) or "uz"
     logged_in = bool(user and user["session"])
-    active = bool(user and user["active"])
-    body = text or (
-        "🚕 <b>Taxi Yordamchi</b>\n\n"
-        "Xabaringizni belgilang, guruhlarni tanlang, intervalni sozlang "
-        "va «Boshlash» tugmasini bosing."
-    )
-    kb = keyboards.main_menu(logged_in, active)
-    if isinstance(target, CallbackQuery):
-        try:
-            await target.message.edit_text(body, reply_markup=kb)
-        except Exception:  # noqa: BLE001 — bir xil matnni tahrirlashda xato bo'lishi mumkin
-            await target.message.answer(body, reply_markup=kb)
-    else:
-        await target.answer(body, reply_markup=kb)
+    await message.answer(text, reply_markup=keyboards.main_menu(lang, logged_in))
+
+
+async def _lang(user_id: int) -> str:
+    return await db.get_lang(user_id)
 
 
 # --------------------------------------------------------------------- start
@@ -43,161 +44,265 @@ async def show_menu(target: Message | CallbackQuery, text: str | None = None) ->
 async def cmd_start(message: Message, state: FSMContext) -> None:
     await state.clear()
     await db.ensure_user(message.from_user.id)
-    await show_menu(message)
+    lang = await _lang(message.from_user.id)
+    await send_menu(message, t(lang, "welcome"))
+
+
+@router.message(Command("id"))
+async def cmd_id(message: Message) -> None:
+    lang = await _lang(message.from_user.id)
+    await message.answer(t(lang, "id_text", id=message.from_user.id))
 
 
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, state: FSMContext) -> None:
     await state.clear()
     await userbot.cancel_login(message.from_user.id)
-    await show_menu(message, "Bekor qilindi.")
+    lang = await _lang(message.from_user.id)
+    await send_menu(message, t(lang, "cancelled"))
 
 
-@router.callback_query(F.data == "menu")
-async def cb_menu(cb: CallbackQuery, state: FSMContext) -> None:
+# ============================ MENYU TUGMALARI (doim ishlaydi) ============================
+@router.message(MenuButton())
+async def on_menu(message: Message, state: FSMContext, action: str) -> None:
+    uid = message.from_user.id
+    lang = await _lang(uid)
+    await state.clear()  # menyu tugmasi bosilsa har qanday jarayon bekor bo'ladi
+
+    if action == "restart":
+        await db.ensure_user(uid)
+        await send_menu(message, t(lang, "welcome"))
+        return
+
+    if action == "lang":
+        await message.answer(t(lang, "lang_prompt"), reply_markup=keyboards.lang_keyboard())
+        return
+
+    if action == "login":
+        await state.set_state(Auth.waiting_phone)
+        await message.answer(t(lang, "login_prompt"), reply_markup=keyboards.phone_request(lang))
+        return
+
+    if action == "logout":
+        await state.clear()
+        scheduler.remove_user_job(uid)
+        await db.clear_session(uid)
+        await send_menu(message, t(lang, "logged_out"))
+        return
+
+    # Quyidagilar uchun akkaunt kerak
+    user = await db.get_user(uid)
+    if action in ("message", "interval", "groups", "start") and not (user and user["session"]):
+        await send_menu(message, t(lang, "need_login"))
+        return
+
+    if action == "message":
+        await state.set_state(Compose.waiting_message)
+        await message.answer(t(lang, "msg_prompt"))
+
+    elif action == "interval":
+        await state.set_state(Compose.waiting_interval)
+        await message.answer(t(lang, "interval_prompt", min=config.MIN_INTERVAL_MINUTES))
+
+    elif action == "groups":
+        await _open_groups(message, state, lang, user)
+
+    elif action == "start":
+        await _do_start(message, state, lang, user)
+
+    elif action == "stop":
+        await state.clear()
+        scheduler.remove_user_job(uid)
+        await db.set_active(uid, False)
+        await send_menu(message, t(lang, "stopped"))
+
+    elif action == "status":
+        await _show_status(message, lang, user)
+
+
+async def _open_groups(message: Message, state: FSMContext, lang: str, user: dict) -> None:
     await state.clear()
-    await show_menu(cb)
-    await cb.answer()
+    loading = await message.answer(t(lang, "groups_loading"))
+    try:
+        groups = await userbot.get_groups(user["session"])
+    except PermissionError:
+        await db.clear_session(message.from_user.id)
+        await send_menu(message, t(lang, "session_expired"))
+        return
+    except Exception as e:  # noqa: BLE001
+        await loading.edit_text(t(lang, "groups_error", err=e))
+        return
+    if not groups:
+        await loading.edit_text(t(lang, "no_groups"))
+        return
+    await state.update_data(groups=groups)
+    selected = await db.get_selected_group_ids(message.from_user.id)
+    await loading.edit_text(
+        t(lang, "groups_select"),
+        reply_markup=keyboards.groups_keyboard(lang, groups, selected),
+    )
 
 
-# ---------------------------------------------------------------- login flow
-@router.callback_query(F.data == "login")
-async def cb_login(cb: CallbackQuery, state: FSMContext) -> None:
-    await state.set_state(Auth.waiting_phone)
+async def _do_start(message: Message, state: FSMContext, lang: str, user: dict) -> None:
+    await state.clear()
+    uid = message.from_user.id
+    selected = await db.get_selected_group_ids(uid)
+    problems = []
+    if not user or not user["session"]:
+        problems.append(t(lang, "prob_login"))
+    if not user or not user["message"]:
+        problems.append(t(lang, "prob_message"))
+    if not user or not user["interval_minutes"]:
+        problems.append(t(lang, "prob_interval"))
+    if not selected:
+        problems.append(t(lang, "prob_groups"))
+    if problems:
+        await send_menu(message, t(lang, "start_need", list=", ".join(problems)))
+        return
+
+    await db.set_active(uid, True)
+    scheduler.add_user_job(uid, user["interval_minutes"])
+    asyncio.create_task(scheduler.run_now(uid))
+    await send_menu(
+        message,
+        t(lang, "started", min=user["interval_minutes"], count=len(selected)),
+    )
+
+
+async def _show_status(message: Message, lang: str, user: dict) -> None:
+    selected = await db.get_selected_groups(message.from_user.id)
+    dash = t(lang, "dash")
+    msg = (user["message"] if user else None) or dash
+    if len(msg) > 200:
+        msg = msg[:200] + "…"
+    interval = (
+        f"{user['interval_minutes']} {t(lang, 'min_word')}"
+        if user and user["interval_minutes"] else dash
+    )
+    await send_menu(
+        message,
+        t(
+            lang, "status",
+            acc=t(lang, "acc_yes") if user and user["session"] else t(lang, "acc_no"),
+            interval=interval,
+            groups=len(selected),
+            state=t(lang, "state_on") if user and user["active"] else t(lang, "state_off"),
+            msg=msg,
+        ),
+    )
+
+
+# ============================ TIL TANLASH (inline) ============================
+@router.callback_query(F.data.startswith("setlang:"))
+async def cb_setlang(cb: CallbackQuery, state: FSMContext) -> None:
+    lang = cb.data.split(":", 1)[1]
+    await db.set_lang(cb.from_user.id, i18n.normalize(lang))
+    try:
+        await cb.message.delete()
+    except Exception:  # noqa: BLE001
+        pass
+    user = await db.get_user(cb.from_user.id)
     await cb.message.answer(
-        "📱 Telefon raqamingizni yuboring (pastdagi tugma orqali) "
-        "yoki +998... ko'rinishida yozing.",
-        reply_markup=keyboards.phone_request(),
+        t(lang, "lang_changed"),
+        reply_markup=keyboards.main_menu(lang, bool(user and user["session"])),
     )
     await cb.answer()
 
 
+# ============================ AUTH JARAYONI (state) ============================
 @router.message(Auth.waiting_phone)
 async def on_phone(message: Message, state: FSMContext) -> None:
-    if message.contact:
-        phone = message.contact.phone_number
-    else:
-        phone = (message.text or "").strip()
+    lang = await _lang(message.from_user.id)
+    phone = message.contact.phone_number if message.contact else (message.text or "").strip()
     if not re.match(r"^\+?\d{7,15}$", phone):
-        await message.answer("❌ Raqam noto'g'ri. Masalan: +998901234567")
+        await message.answer(t(lang, "phone_invalid"))
         return
     if not phone.startswith("+"):
         phone = "+" + phone
 
-    await message.answer("⏳ Kod yuborilmoqda...")
+    await message.answer(t(lang, "sending_code"))
     try:
-        await userbot.start_login(message.from_user.id, phone)
+        delivery_key = await userbot.start_login(message.from_user.id, phone)
     except Exception as e:  # noqa: BLE001
-        await message.answer(f"❌ Xatolik: {e}\n/cancel bosing.")
+        await message.answer(t(lang, "login_error", err=e))
         return
 
     await state.update_data(phone=phone)
     await state.set_state(Auth.waiting_code)
-    await message.answer(
-        "✉️ Telegramga kelgan kodni kiriting.\n\n"
-        "⚠️ <b>Muhim:</b> kodni raqamlar orasiga bo'sh joy qo'yib yozing, "
-        "masalan <code>1 2 3 4 5</code> — aks holda Telegram kodni bekor qilishi mumkin."
-    )
+    await message.answer(f"{t(lang, delivery_key)}\n\n{t(lang, 'code_prompt')}")
 
 
 @router.message(Auth.waiting_code)
 async def on_code(message: Message, state: FSMContext) -> None:
+    lang = await _lang(message.from_user.id)
     code = re.sub(r"\D", "", message.text or "")
     if not code:
-        await message.answer("❌ Kod topilmadi. Qayta kiriting.")
+        await message.answer(t(lang, "code_empty"))
         return
     try:
         status, session = await userbot.confirm_code(message.from_user.id, code)
     except Exception as e:  # noqa: BLE001
-        await message.answer(f"❌ Kod xato yoki eskirgan: {e}\n/cancel bosib qayta urinib ko'ring.")
+        await message.answer(t(lang, "code_error", err=e))
         return
 
     if status == "password":
         await state.set_state(Auth.waiting_password)
-        await message.answer("🔐 Akkauntda ikki bosqichli parol bor. Parolni kiriting:")
+        await message.answer(t(lang, "twofa_prompt"))
         return
 
     data = await state.get_data()
     await db.set_session(message.from_user.id, data.get("phone", ""), session)
     await state.clear()
-    await message.answer("✅ Muvaffaqiyatli kirdingiz!")
-    await show_menu(message)
+    await send_menu(message, t(lang, "login_success"))
 
 
 @router.message(Auth.waiting_password)
 async def on_password(message: Message, state: FSMContext) -> None:
+    lang = await _lang(message.from_user.id)
     try:
         session = await userbot.confirm_password(message.from_user.id, message.text or "")
     except Exception as e:  # noqa: BLE001
-        await message.answer(f"❌ Parol xato: {e}\nQayta kiriting yoki /cancel bosing.")
+        await message.answer(t(lang, "password_error", err=e))
         return
     data = await state.get_data()
     await db.set_session(message.from_user.id, data.get("phone", ""), session)
     await state.clear()
-    await message.answer("✅ Muvaffaqiyatli kirdingiz!")
-    await show_menu(message)
+    await send_menu(message, t(lang, "login_success"))
 
 
-@router.callback_query(F.data == "logout")
-async def cb_logout(cb: CallbackQuery, state: FSMContext) -> None:
-    scheduler.remove_user_job(cb.from_user.id)
-    await db.clear_session(cb.from_user.id)
-    await show_menu(cb, "🚪 Chiqdingiz. Session o'chirildi.")
-    await cb.answer()
-
-
-# ------------------------------------------------------------------- message
-@router.callback_query(F.data == "set_message")
-async def cb_set_message(cb: CallbackQuery, state: FSMContext) -> None:
-    await state.set_state(Compose.waiting_message)
-    await cb.message.answer("✍️ Guruhlarga yuboriladigan xabar matnini yuboring:")
-    await cb.answer()
-
-
+# ============================ MATN KIRITISH (state) ============================
 @router.message(Compose.waiting_message)
 async def on_message_text(message: Message, state: FSMContext) -> None:
+    lang = await _lang(message.from_user.id)
     text = message.text or message.caption
     if not text:
-        await message.answer("❌ Iltimos, matn yuboring.")
+        await message.answer(t(lang, "msg_empty"))
         return
     await db.set_message(message.from_user.id, text)
     await state.clear()
-    await message.answer("✅ Xabar saqlandi.")
-    await show_menu(message)
+    await send_menu(message, t(lang, "msg_saved"))
 
 
-# -------------------------------------------------------------------- groups
-@router.callback_query(F.data == "pick_groups")
-async def cb_pick_groups(cb: CallbackQuery, state: FSMContext) -> None:
-    user = await db.get_user(cb.from_user.id)
-    if not user or not user["session"]:
-        await cb.answer("Avval akkauntga kiring", show_alert=True)
+@router.message(Compose.waiting_interval)
+async def on_interval(message: Message, state: FSMContext) -> None:
+    lang = await _lang(message.from_user.id)
+    digits = re.sub(r"\D", "", message.text or "")
+    if not digits:
+        await message.answer(t(lang, "need_number"))
         return
-    await cb.answer("⏳ Guruhlar yuklanmoqda...")
-    try:
-        groups = await userbot.get_groups(user["session"])
-    except PermissionError:
-        await db.clear_session(cb.from_user.id)
-        await show_menu(cb, "❌ Session eskirgan. Qayta kiring.")
+    minutes = int(digits)
+    if minutes < config.MIN_INTERVAL_MINUTES:
+        await message.answer(t(lang, "interval_small", min=config.MIN_INTERVAL_MINUTES))
         return
-    except Exception as e:  # noqa: BLE001
-        await cb.message.answer(f"❌ Guruhlarni olishda xato: {e}")
-        return
-
-    if not groups:
-        await cb.message.answer("Sizda guruhlar topilmadi.")
-        return
-
-    await state.update_data(groups=groups)
-    selected = await db.get_selected_group_ids(cb.from_user.id)
-    await cb.message.answer(
-        "👥 Guruhlarni tanlang (belgilash uchun bosing), so'ng «Tayyor»:",
-        reply_markup=keyboards.groups_keyboard(groups, selected),
-    )
+    await db.set_interval(message.from_user.id, minutes)
+    await state.clear()
+    await send_menu(message, t(lang, "interval_saved", min=minutes))
 
 
+# ============================ GURUH TANLASH (inline) ============================
 @router.callback_query(F.data.startswith("g:"))
 async def cb_toggle_group(cb: CallbackQuery, state: FSMContext) -> None:
+    lang = await _lang(cb.from_user.id)
     chat_id = int(cb.data[2:])
     data = await state.get_data()
     groups = data.get("groups", [])
@@ -206,7 +311,7 @@ async def cb_toggle_group(cb: CallbackQuery, state: FSMContext) -> None:
     selected = await db.get_selected_group_ids(cb.from_user.id)
     try:
         await cb.message.edit_reply_markup(
-            reply_markup=keyboards.groups_keyboard(groups, selected)
+            reply_markup=keyboards.groups_keyboard(lang, groups, selected)
         )
     except Exception:  # noqa: BLE001
         pass
@@ -215,93 +320,17 @@ async def cb_toggle_group(cb: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "groups_done")
 async def cb_groups_done(cb: CallbackQuery, state: FSMContext) -> None:
+    lang = await _lang(cb.from_user.id)
     selected = await db.get_selected_groups(cb.from_user.id)
-    await show_menu(cb, f"✅ {len(selected)} ta guruh tanlandi.")
-    await cb.answer()
-
-
-# ------------------------------------------------------------------ interval
-@router.callback_query(F.data == "set_interval")
-async def cb_set_interval(cb: CallbackQuery, state: FSMContext) -> None:
-    await state.set_state(Compose.waiting_interval)
-    await cb.message.answer(
-        f"⏱ Interval necha daqiqada bo'lsin? Raqam yuboring "
-        f"(eng kam {config.MIN_INTERVAL_MINUTES} daqiqa)."
-    )
-    await cb.answer()
-
-
-@router.message(Compose.waiting_interval)
-async def on_interval(message: Message, state: FSMContext) -> None:
     try:
-        minutes = int(re.sub(r"\D", "", message.text or ""))
-    except ValueError:
-        await message.answer("❌ Raqam kiriting.")
-        return
-    if minutes < config.MIN_INTERVAL_MINUTES:
-        await message.answer(
-            f"❌ Eng kam interval {config.MIN_INTERVAL_MINUTES} daqiqa "
-            f"(akkaunt xavfsizligi uchun)."
-        )
-        return
-    await db.set_interval(message.from_user.id, minutes)
-    await state.clear()
-    await message.answer(f"✅ Interval: har {minutes} daqiqada.")
-    await show_menu(message)
-
-
-# ------------------------------------------------------------- start / stop
-@router.callback_query(F.data == "start")
-async def cb_start(cb: CallbackQuery, state: FSMContext) -> None:
-    user = await db.get_user(cb.from_user.id)
-    selected = await db.get_selected_group_ids(cb.from_user.id)
-    problems = []
-    if not user or not user["session"]:
-        problems.append("akkauntga kirmagansiz")
-    if not user or not user["message"]:
-        problems.append("xabar belgilanmagan")
-    if not user or not user["interval_minutes"]:
-        problems.append("interval belgilanmagan")
-    if not selected:
-        problems.append("guruh tanlanmagan")
-    if problems:
-        await cb.answer("Avval: " + ", ".join(problems), show_alert=True)
-        return
-
-    await db.set_active(cb.from_user.id, True)
-    scheduler.add_user_job(cb.from_user.id, user["interval_minutes"])
-    # Birinchi tarqatishni darhol fonda ishga tushiramiz.
-    asyncio.create_task(scheduler.run_now(cb.from_user.id))
-    await show_menu(
-        cb,
-        f"▶️ Ishga tushdi! Har {user['interval_minutes']} daqiqada "
-        f"{len(selected)} ta guruhga yuboriladi.",
-    )
+        await cb.message.edit_text(t(lang, "groups_done", count=len(selected)))
+    except Exception:  # noqa: BLE001
+        pass
     await cb.answer()
 
 
-@router.callback_query(F.data == "stop")
-async def cb_stop(cb: CallbackQuery, state: FSMContext) -> None:
-    scheduler.remove_user_job(cb.from_user.id)
-    await db.set_active(cb.from_user.id, False)
-    await show_menu(cb, "⏹ To'xtatildi.")
-    await cb.answer()
-
-
-@router.callback_query(F.data == "status")
-async def cb_status(cb: CallbackQuery, state: FSMContext) -> None:
-    user = await db.get_user(cb.from_user.id)
-    selected = await db.get_selected_groups(cb.from_user.id)
-    msg = (user["message"] if user else None) or "—"
-    if len(msg) > 200:
-        msg = msg[:200] + "…"
-    text = (
-        "ℹ️ <b>Holat</b>\n\n"
-        f"Akkaunt: {'✅ kirgan' if user and user['session'] else '❌ yo‘q'}\n"
-        f"Interval: {user['interval_minutes'] if user and user['interval_minutes'] else '—'} daqiqa\n"
-        f"Guruhlar: {len(selected)} ta\n"
-        f"Holat: {'▶️ ishlayapti' if user and user['active'] else '⏹ to‘xtatilgan'}\n\n"
-        f"Xabar:\n<code>{msg}</code>"
-    )
-    await show_menu(cb, text)
-    await cb.answer()
+# ============================ FALLBACK ============================
+@router.message()
+async def fallback(message: Message, state: FSMContext) -> None:
+    lang = await _lang(message.from_user.id)
+    await send_menu(message, t(lang, "fallback"))

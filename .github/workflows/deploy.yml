@@ -1,0 +1,32 @@
+name: Deploy to Contabo
+
+# main branch'ga push bo'lganda avtomatik ishga tushadi (yoki qo'lda)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script_stop: true
+          command_timeout: 15m
+          script: |
+            set -e
+            cd /opt/taxi_yordamchi
+            git fetch origin main
+            git reset --hard origin/main
+            ./.venv/bin/pip install -q -r requirements.txt
+            cd admin/frontend
+            npm install --no-audit --no-fund
+            npm run build
+            cd /opt/taxi_yordamchi
+            systemctl restart taxi-bot taxi-admin
+            git log -1 --format='✅ Deployed: %h %s'

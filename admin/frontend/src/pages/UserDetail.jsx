@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api.js'
-import { fmtMoney } from '../format.js'
+import { fmtMoney, fmtInterval } from '../format.js'
 import { PayBadge, Spinner, inputCls, btnCls, btnGhostCls } from '../ui.jsx'
 
 function Row({ k, children }) {
@@ -63,7 +63,7 @@ export default function UserDetail() {
           <Row k="Telefon">{u.phone || '—'}</Row>
           <Row k="Akkaunt">{u.session ? '✅ ulangan' : '❌ yo‘q'}</Row>
           <Row k="Tarqatish">{u.active ? '▶ faol' : '⏹ to‘xtagan'}</Row>
-          <Row k="Interval">{u.interval_minutes || '—'} daqiqa</Row>
+          <Row k="Interval">{fmtInterval(u.interval_seconds)}</Row>
           <Row k="Tanlangan guruhlar">{u.groups.length} ta</Row>
           <Row k="Qo'shilgan">{u.created_at}</Row>
           <Row k="Oxirgi faollik">{u.last_active || '—'}</Row>

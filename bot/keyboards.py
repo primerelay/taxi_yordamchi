@@ -45,6 +45,17 @@ def phone_request(lang: str) -> ReplyKeyboardMarkup:
     )
 
 
+def interval_keyboard(lang: str) -> InlineKeyboardMarkup:
+    """Tayyor interval variantlari (2 tadan qatorda)."""
+    buttons = [
+        InlineKeyboardButton(text=i18n.fmt_interval(lang, s), callback_data=f"iv:{s}")
+        for s in i18n.INTERVAL_PRESETS
+    ]
+    rows = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+    rows.append([InlineKeyboardButton(text=t(lang, "interval_custom_btn"), callback_data="iv_custom")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def code_pad() -> InlineKeyboardMarkup:
     """Kod kiritish uchun raqamli klaviatura (kod chatga matn sifatida yozilmaydi)."""
     def d(n):

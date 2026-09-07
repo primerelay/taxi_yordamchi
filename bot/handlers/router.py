@@ -12,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from .. import config, db, i18n, keyboards, scheduler, userbot
-from ..i18n import button_action, t
+from ..i18n import button_action, fmt_interval, t
 from ..states import Auth, Compose
 
 log = logging.getLogger(__name__)
@@ -111,7 +111,10 @@ async def on_menu(message: Message, state: FSMContext, action: str) -> None:
 
     elif action == "interval":
         await state.set_state(Compose.waiting_interval)
-        await message.answer(t(lang, "interval_prompt", min=config.MIN_INTERVAL_MINUTES))
+        await message.answer(
+            t(lang, "interval_choose"),
+            reply_markup=keyboards.interval_keyboard(lang),
+        )
 
     elif action == "groups":
         await _open_groups(message, state, lang, user)
@@ -199,7 +202,7 @@ async def _do_start(message: Message, state: FSMContext, lang: str, user: dict) 
         problems.append(t(lang, "prob_login"))
     if not user or not user["message"]:
         problems.append(t(lang, "prob_message"))
-    if not user or not user["interval_minutes"]:
+    if not user or not user["interval_seconds"]:
         problems.append(t(lang, "prob_interval"))
     if not selected:
         problems.append(t(lang, "prob_groups"))
@@ -208,11 +211,11 @@ async def _do_start(message: Message, state: FSMContext, lang: str, user: dict) 
         return
 
     await db.set_active(uid, True)
-    scheduler.add_user_job(uid, user["interval_minutes"])
+    scheduler.add_user_job(uid, user["interval_seconds"])
     asyncio.create_task(scheduler.run_now(uid))
     await send_menu(
         message,
-        t(lang, "started", min=user["interval_minutes"], count=len(selected)),
+        t(lang, "started", interval=fmt_interval(lang, user["interval_seconds"]), count=len(selected)),
     )
 
 
@@ -223,8 +226,8 @@ async def _show_status(message: Message, lang: str, user: dict) -> None:
     if len(msg) > 200:
         msg = msg[:200] + "…"
     interval = (
-        f"{user['interval_minutes']} {t(lang, 'min_word')}"
-        if user and user["interval_minutes"] else dash
+        fmt_interval(lang, user["interval_seconds"])
+        if user and user["interval_seconds"] else dash
     )
     await send_menu(
         message,
@@ -463,6 +466,29 @@ async def on_template_text(message: Message, state: FSMContext) -> None:
     await message.answer(view_text, reply_markup=kb)
 
 
+@router.callback_query(F.data == "iv_custom")
+async def cb_interval_custom(cb: CallbackQuery, state: FSMContext) -> None:
+    lang = await _lang(cb.from_user.id)
+    await state.set_state(Compose.waiting_interval)
+    await cb.message.answer(
+        t(lang, "interval_custom_prompt", min=config.MIN_INTERVAL_SECONDS)
+    )
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("iv:"))
+async def cb_interval_preset(cb: CallbackQuery, state: FSMContext) -> None:
+    lang = await _lang(cb.from_user.id)
+    seconds = int(cb.data.split(":", 1)[1])
+    await db.set_interval(cb.from_user.id, seconds)
+    await state.clear()
+    try:
+        await cb.message.edit_text(t(lang, "interval_saved", interval=fmt_interval(lang, seconds)))
+    except Exception:  # noqa: BLE001
+        pass
+    await cb.answer(t(lang, "interval_saved", interval=fmt_interval(lang, seconds)))
+
+
 @router.message(Compose.waiting_interval)
 async def on_interval(message: Message, state: FSMContext) -> None:
     lang = await _lang(message.from_user.id)
@@ -470,13 +496,13 @@ async def on_interval(message: Message, state: FSMContext) -> None:
     if not digits:
         await message.answer(t(lang, "need_number"))
         return
-    minutes = int(digits)
-    if minutes < config.MIN_INTERVAL_MINUTES:
-        await message.answer(t(lang, "interval_small", min=config.MIN_INTERVAL_MINUTES))
+    seconds = int(digits)
+    if seconds < config.MIN_INTERVAL_SECONDS:
+        await message.answer(t(lang, "interval_small", min=config.MIN_INTERVAL_SECONDS))
         return
-    await db.set_interval(message.from_user.id, minutes)
+    await db.set_interval(message.from_user.id, seconds)
     await state.clear()
-    await send_menu(message, t(lang, "interval_saved", min=minutes))
+    await send_menu(message, t(lang, "interval_saved", interval=fmt_interval(lang, seconds)))
 
 
 # ============================ GURUH TANLASH (inline) ============================

@@ -44,11 +44,11 @@ async def _run_broadcast(user_id: int) -> None:
         log.exception("user=%s tarqatishda xato", user_id)
 
 
-def add_user_job(user_id: int, interval_minutes: int) -> None:
+def add_user_job(user_id: int, interval_seconds: int) -> None:
     _scheduler.add_job(
         _run_broadcast,
         trigger="interval",
-        minutes=interval_minutes,
+        seconds=interval_seconds,
         id=_job_id(user_id),
         args=[user_id],
         replace_existing=True,
@@ -70,8 +70,8 @@ def remove_user_job(user_id: int) -> None:
 async def restore_jobs() -> None:
     """Bot qayta ishga tushganda faol foydalanuvchilar ishini tiklaydi."""
     for user in await db.get_active_users():
-        if user["interval_minutes"]:
-            add_user_job(user["user_id"], user["interval_minutes"])
+        if user["interval_seconds"]:
+            add_user_job(user["user_id"], user["interval_seconds"])
     log.info("tiklandi: %s faol job", len(_scheduler.get_jobs()))
 
 

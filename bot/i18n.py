@@ -99,9 +99,12 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "🗑 Deleted",
     },
     "interval_prompt": {
-        "uz": "⏱ Interval necha daqiqada bo'lsin? Raqam yuboring (eng kam {min} daqiqa).",
-        "ru": "⏱ Через сколько минут повторять? Отправьте число (минимум {min} мин).",
-        "en": "⏱ How many minutes between sends? Send a number (minimum {min} min).",
+        "uz": "⏱ Necha soniyada bir marta yuborilsin? Raqam yuboring (eng kam {min} soniya).\n\n"
+              "Masalan: <code>30</code> = 30 soniya, <code>60</code> = 1 daqiqa, <code>300</code> = 5 daqiqa.",
+        "ru": "⏱ Через сколько секунд повторять? Отправьте число (минимум {min} сек).\n\n"
+              "Например: <code>30</code> = 30 сек, <code>60</code> = 1 мин, <code>300</code> = 5 мин.",
+        "en": "⏱ How many seconds between sends? Send a number (minimum {min} sec).\n\n"
+              "E.g.: <code>30</code> = 30 sec, <code>60</code> = 1 min, <code>300</code> = 5 min.",
     },
     "groups_loading": {
         "uz": "⏳ Guruhlar yuklanmoqda...",
@@ -143,9 +146,9 @@ TEXTS: dict[str, dict[str, str]] = {
     "prob_interval": {"uz": "interval belgilanmagan","ru": "не задан интервал",   "en": "no interval set"},
     "prob_groups":   {"uz": "guruh tanlanmagan",     "ru": "не выбраны группы",   "en": "no groups selected"},
     "started": {
-        "uz": "▶️ Ishga tushdi! Har {min} daqiqada {count} ta guruhga yuboriladi.",
-        "ru": "▶️ Запущено! Каждые {min} мин в {count} групп(ы).",
-        "en": "▶️ Started! Every {min} min to {count} group(s).",
+        "uz": "▶️ Ishga tushdi! Har {interval}da {count} ta guruhga yuboriladi.",
+        "ru": "▶️ Запущено! Каждые {interval} в {count} групп(ы).",
+        "en": "▶️ Started! Every {interval} to {count} group(s).",
     },
     "stopped": {
         "uz": "⏹ To'xtatildi.",
@@ -248,16 +251,39 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "❌ Пожалуйста, отправьте текст.",
         "en": "❌ Please send text.",
     },
+    "interval_choose": {
+        "uz": "⏱ Tayyor intervalni tanlang yoki «✏️ Boshqa vaqt»:",
+        "ru": "⏱ Выберите готовый интервал или «✏️ Своё время»:",
+        "en": "⏱ Choose a preset interval or «✏️ Custom time»:",
+    },
+    "interval_custom_btn": {
+        "uz": "✏️ Boshqa vaqt",
+        "ru": "✏️ Своё время",
+        "en": "✏️ Custom time",
+    },
+    "interval_custom_prompt": {
+        "uz": "✏️ O'zingiz xohlagan vaqtni <b>soniyada</b> yozing.\n\n"
+              "Masalan: <code>45</code> = 45 soniya, <code>180</code> = 3 daqiqa, <code>900</code> = 15 daqiqa.\n\n"
+              "Eng kam {min} soniya.",
+        "ru": "✏️ Напишите своё время в <b>секундах</b>.\n\n"
+              "Например: <code>45</code> = 45 сек, <code>180</code> = 3 мин, <code>900</code> = 15 мин.\n\n"
+              "Минимум {min} сек.",
+        "en": "✏️ Type your own time in <b>seconds</b>.\n\n"
+              "E.g.: <code>45</code> = 45 sec, <code>180</code> = 3 min, <code>900</code> = 15 min.\n\n"
+              "Minimum {min} sec.",
+    },
     "interval_small": {
-        "uz": "❌ Eng kam interval {min} daqiqa (akkaunt xavfsizligi uchun).",
-        "ru": "❌ Минимальный интервал {min} мин (для безопасности аккаунта).",
-        "en": "❌ Minimum interval is {min} min (for account safety).",
+        "uz": "❌ Eng kam interval {min} soniya (akkaunt xavfsizligi uchun).",
+        "ru": "❌ Минимальный интервал {min} сек (для безопасности аккаунта).",
+        "en": "❌ Minimum interval is {min} sec (for account safety).",
     },
     "interval_saved": {
-        "uz": "✅ Interval: har {min} daqiqada.",
-        "ru": "✅ Интервал: каждые {min} мин.",
-        "en": "✅ Interval: every {min} min.",
+        "uz": "✅ Interval: har {interval}da.",
+        "ru": "✅ Интервал: каждые {interval}.",
+        "en": "✅ Interval: every {interval}.",
     },
+    "sec_word": {"uz": "soniya", "ru": "сек", "en": "sec"},
+    "hour_word": {"uz": "soat", "ru": "ч", "en": "h"},
     "need_number": {
         "uz": "❌ Raqam kiriting.",
         "ru": "❌ Введите число.",
@@ -352,6 +378,20 @@ def t(lang: str | None, key: str, **kw) -> str:
     entry = TEXTS.get(key, {})
     s = entry.get(lang) or entry.get(DEFAULT_LANG) or key
     return s.format(**kw) if kw else s
+
+
+# Tayyor interval variantlari (soniyada)
+INTERVAL_PRESETS = [30, 60, 120, 300, 600, 1800, 3600]
+
+
+def fmt_interval(lang: str, seconds: int) -> str:
+    """Soniyani chiroyli ko'rinishga o'giradi: 30 -> '30 soniya', 300 -> '5 daqiqa'."""
+    lang = normalize(lang)
+    if seconds % 3600 == 0 and seconds >= 3600:
+        return f"{seconds // 3600} {t(lang, 'hour_word')}"
+    if seconds % 60 == 0 and seconds >= 60:
+        return f"{seconds // 60} {t(lang, 'min_word')}"
+    return f"{seconds} {t(lang, 'sec_word')}"
 
 
 def button_action(text: str | None) -> str | None:

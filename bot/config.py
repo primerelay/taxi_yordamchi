@@ -18,7 +18,8 @@ API_HASH = _require("API_HASH")
 BOT_TOKEN = _require("BOT_TOKEN")
 
 DB_PATH = os.getenv("DB_PATH", "taxi_bot.db")
-MIN_INTERVAL_MINUTES = int(os.getenv("MIN_INTERVAL_MINUTES", "5"))
+# Minimal interval (soniyada). Juda kichik qilsangiz akkaunt bloklanishi mumkin.
+MIN_INTERVAL_SECONDS = int(os.getenv("MIN_INTERVAL_SECONDS", "30"))
 SEND_DELAY_SECONDS = float(os.getenv("SEND_DELAY_SECONDS", "4"))
 
 # Yangi foydalanuvchiga beriladigan bepul sinov kunlari

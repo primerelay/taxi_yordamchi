@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS users (
     phone            TEXT,
     session          TEXT,                  -- Telethon StringSession
     message          TEXT,
-    interval_minutes INTEGER,
+    interval_minutes INTEGER,               -- eski (endi ishlatilmaydi)
+    interval_seconds INTEGER,
     active           INTEGER NOT NULL DEFAULT 0,
     full_name        TEXT,
     username         TEXT,
@@ -54,6 +55,7 @@ _MIGRATIONS = {
     "lang": "ALTER TABLE users ADD COLUMN lang TEXT NOT NULL DEFAULT 'uz'",
     "last_active": "ALTER TABLE users ADD COLUMN last_active TEXT",
     "paid_until": "ALTER TABLE users ADD COLUMN paid_until TEXT",
+    "interval_seconds": "ALTER TABLE users ADD COLUMN interval_seconds INTEGER",
 }
 
 
@@ -71,6 +73,11 @@ async def init() -> None:
         await db.execute(
             "UPDATE users SET paid_until = date('now', 'localtime', ?) WHERE paid_until IS NULL",
             (f"+{config.TRIAL_DAYS} days",),
+        )
+        # Eski interval (daqiqa) -> soniyaga o'tkazish (bir martalik).
+        await db.execute(
+            "UPDATE users SET interval_seconds = interval_minutes * 60 "
+            "WHERE interval_seconds IS NULL AND interval_minutes IS NOT NULL"
         )
         await db.commit()
 
@@ -200,11 +207,11 @@ async def delete_template(user_id: int, tpl_id: int) -> None:
         await db.commit()
 
 
-async def set_interval(user_id: int, minutes: int) -> None:
+async def set_interval(user_id: int, seconds: int) -> None:
     async with aiosqlite.connect(config.DB_PATH) as db:
         await db.execute(
-            "UPDATE users SET interval_minutes = ? WHERE user_id = ?",
-            (minutes, user_id),
+            "UPDATE users SET interval_seconds = ? WHERE user_id = ?",
+            (seconds, user_id),
         )
         await db.commit()
 

@@ -317,8 +317,7 @@ async def _do_start(message: Message, state: FSMContext, lang: str, user: dict) 
         return
 
     await db.set_active(uid, True)
-    scheduler.add_user_job(uid, user["interval_seconds"])
-    asyncio.create_task(scheduler.run_now(uid))
+    scheduler.add_user_job(uid, user["interval_seconds"])  # darhol yuboradi + interval loop
     await send_menu(
         message,
         t(lang, "started", interval=fmt_interval(lang, user["interval_seconds"]), count=len(selected)),

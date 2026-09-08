@@ -1,84 +1,100 @@
-"""Interval bo'yicha xabar tarqatuvchi rejalashtiruvchi (APScheduler)."""
+"""Interval bo'yicha xabar tarqatish — har bir user uchun alohida asyncio loop.
+
+Nega APScheduler emas: APScheduler intervalda ishga tushirganda, agar yuborish
+intervaldan uzoq cho'zilsa (ko'p guruh yoki FloodWait), sikllar ustma-ust kelib
+tashlab yuboriladi ("uxlab qolish"). Bu yerda esa har bir yuborishdan KEYIN
+interval kutiladi — shuning uchun sikllar hech qachon tushib qolmaydi.
+"""
 from __future__ import annotations
 
+import asyncio
 import logging
-
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from . import db, userbot
 
 log = logging.getLogger(__name__)
 
-_scheduler = AsyncIOScheduler()
+# {user_id: asyncio.Task}
+_tasks: dict[int, asyncio.Task] = {}
 
 
-def _job_id(user_id: int) -> str:
-    return f"mail:{user_id}"
-
-
-async def _run_broadcast(user_id: int) -> None:
-    """Bitta foydalanuvchi uchun bir marta tarqatish (interval har safar chaqiradi)."""
+async def _run_once(user_id: int) -> bool:
+    """Bir marta tarqatadi. False qaytarsa — to'xtatish kerak (obuna yo'q/tayyor emas)."""
     user = await db.get_user(user_id)
     if not user or not user["active"] or not user["session"] or not user["message"]:
-        return
-    # Obuna tugagan bo'lsa yubormaymiz — lekin jobni o'chirmaymiz.
-    # To'lov qilinib paid_until yangilanganda keyingi safar avtomatik davom etadi.
+        return True  # hali tayyor emas, lekin loop davom etaveradi
     if not db.subscription_ok(user["paid_until"]):
         log.info("user=%s obuna tugagan — yuborilmadi", user_id)
-        return
+        return True
     chat_ids = list(await db.get_selected_group_ids(user_id))
     if not chat_ids:
-        return
+        return True
+    result = await userbot.broadcast(user["session"], chat_ids, user["message"])
+    log.info(
+        "user=%s yuborildi=%s xato=%s", user_id, result["sent"], len(result["failed"])
+    )
+    return True
+
+
+async def _user_loop(user_id: int) -> None:
+    log.info("user=%s tarqatish sikli boshlandi", user_id)
     try:
-        result = await userbot.broadcast(user["session"], chat_ids, user["message"])
-        log.info(
-            "user=%s yuborildi=%s xato=%s",
-            user_id, result["sent"], len(result["failed"]),
-        )
-    except PermissionError:
-        # Session yaroqsiz — tarqatishni to'xtatamiz.
-        log.warning("user=%s session yaroqsiz, to'xtatildi", user_id)
-        await db.set_active(user_id, False)
-        remove_user_job(user_id)
-    except Exception:  # noqa: BLE001
-        log.exception("user=%s tarqatishda xato", user_id)
+        while True:
+            try:
+                await _run_once(user_id)
+            except PermissionError:
+                # Session yaroqsiz — tarqatishni butunlay to'xtatamiz.
+                log.warning("user=%s session yaroqsiz — to'xtatildi", user_id)
+                await db.set_active(user_id, False)
+                break
+            except Exception:  # noqa: BLE001 — bitta xato sikni o'ldirmasin
+                log.exception("user=%s tarqatishda xato", user_id)
+
+            # Keyingi yuborishgacha kutamiz. Har safar bazadan o'qiladi:
+            # interval o'zgarsa yoki to'xtatilsa — darhol hisobga olinadi.
+            user = await db.get_user(user_id)
+            if not user or not user["active"]:
+                break
+            interval = user["interval_seconds"] or 60
+            await asyncio.sleep(interval)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        # Faqat o'zimizni tozalaymiz (yangi task bilan almashtirilmagan bo'lsa).
+        if _tasks.get(user_id) is asyncio.current_task():
+            _tasks.pop(user_id, None)
+        log.info("user=%s tarqatish sikli to'xtadi", user_id)
 
 
 def add_user_job(user_id: int, interval_seconds: int) -> None:
-    _scheduler.add_job(
-        _run_broadcast,
-        trigger="interval",
-        seconds=interval_seconds,
-        id=_job_id(user_id),
-        args=[user_id],
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-    )
-    # Eslatma: next_run_time ko'rsatilmaydi — APScheduler birinchi ishga tushirishni
-    # avtomatik "hozir + interval" qilib belgilaydi. (None berilsa job PAUZA bo'lib qoladi!)
-    # Birinchi darhol yuborish esa alohida run_now() orqali amalga oshadi.
+    """Foydalanuvchi uchun tarqatish sikini boshlaydi (darhol birinchi yuborish + interval)."""
+    old = _tasks.get(user_id)
+    if old:
+        old.cancel()
+    _tasks[user_id] = asyncio.create_task(_user_loop(user_id))
 
 
 def remove_user_job(user_id: int) -> None:
-    try:
-        _scheduler.remove_job(_job_id(user_id))
-    except Exception:  # noqa: BLE001
-        pass
-
-
-async def restore_jobs() -> None:
-    """Bot qayta ishga tushganda faol foydalanuvchilar ishini tiklaydi."""
-    for user in await db.get_active_users():
-        if user["interval_seconds"]:
-            add_user_job(user["user_id"], user["interval_seconds"])
-    log.info("tiklandi: %s faol job", len(_scheduler.get_jobs()))
+    task = _tasks.pop(user_id, None)
+    if task:
+        task.cancel()
 
 
 async def run_now(user_id: int) -> None:
-    """Darhol bir marta tarqatish (Boshlash bosilganda birinchi yuborish)."""
-    await _run_broadcast(user_id)
+    """Moslik uchun — endi alohida kerak emas (loop darhol yuboradi)."""
+    try:
+        await _run_once(user_id)
+    except Exception:  # noqa: BLE001
+        log.exception("run_now xato user=%s", user_id)
+
+
+async def restore_jobs() -> None:
+    """Bot qayta ishga tushganda faol foydalanuvchilar tarqatishini tiklaydi."""
+    for user in await db.get_active_users():
+        if user["interval_seconds"]:
+            add_user_job(user["user_id"], user["interval_seconds"])
+    log.info("tiklandi: %s faol tarqatish", len(_tasks))
 
 
 def start() -> None:
-    _scheduler.start()
+    """asyncio loop uchun alohida start kerak emas (moslik uchun qoldirilgan)."""

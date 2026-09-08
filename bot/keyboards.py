@@ -1,4 +1,6 @@
 """Inline va doimiy reply klaviaturalar (ko'p tilli)."""
+from urllib.parse import quote
+
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -19,6 +21,7 @@ def main_menu(lang: str, logged_in: bool) -> ReplyKeyboardMarkup:
     if not logged_in:
         rows = [
             [_btn("login", lang)],
+            [_btn("invite", lang)],
             [_btn("sub", lang), _btn("lang", lang)],
             [_btn("restart", lang)],
         ]
@@ -27,6 +30,7 @@ def main_menu(lang: str, logged_in: bool) -> ReplyKeyboardMarkup:
             [_btn("message", lang), _btn("groups", lang)],
             [_btn("interval", lang), _btn("status", lang)],
             [_btn("start", lang), _btn("stop", lang)],
+            [_btn("invite", lang)],
             [_btn("sub", lang), _btn("lang", lang)],
             [_btn("logout", lang), _btn("restart", lang)],
         ]
@@ -70,6 +74,17 @@ def code_pad() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="✅", callback_data="cd:ok"),
         ],
     ])
+
+
+def share_keyboard(lang: str, link: str) -> InlineKeyboardMarkup:
+    """Referral havolasini ulashish tugmasi (Telegram share dialogini ochadi)."""
+    share_url = (
+        "https://t.me/share/url?url=" + quote(link, safe="")
+        + "&text=" + quote(t(lang, "invite_share_text"), safe="")
+    )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=t(lang, "invite_share_btn"), url=share_url)]]
+    )
 
 
 def lang_keyboard() -> InlineKeyboardMarkup:

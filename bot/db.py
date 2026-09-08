@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS users (
     lang             TEXT NOT NULL DEFAULT 'uz',
     last_active      TEXT,                  -- oxirgi faollik (DAU uchun)
     paid_until       TEXT,                  -- to'lov amal qilish sanasi (YYYY-MM-DD)
+    referred_by      INTEGER,               -- kim taklif qilgan (referral)
+    onboarded        INTEGER NOT NULL DEFAULT 0,  -- birinchi /start bosilganmi
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -56,6 +58,8 @@ _MIGRATIONS = {
     "last_active": "ALTER TABLE users ADD COLUMN last_active TEXT",
     "paid_until": "ALTER TABLE users ADD COLUMN paid_until TEXT",
     "interval_seconds": "ALTER TABLE users ADD COLUMN interval_seconds INTEGER",
+    "referred_by": "ALTER TABLE users ADD COLUMN referred_by INTEGER",
+    "onboarded": "ALTER TABLE users ADD COLUMN onboarded INTEGER NOT NULL DEFAULT 0",
 }
 
 
@@ -69,6 +73,9 @@ async def init() -> None:
         for column, sql in _MIGRATIONS.items():
             if column not in existing:
                 await db.execute(sql)
+                if column == "onboarded":
+                    # mavjud (eski) userlar allaqachon start bosgan — referral bermaslik uchun
+                    await db.execute("UPDATE users SET onboarded = 1")
         # Obunasi umuman belgilanmagan (eski) foydalanuvchilarga bir martalik sinov.
         await db.execute(
             "UPDATE users SET paid_until = date('now', 'localtime', ?) WHERE paid_until IS NULL",
@@ -113,6 +120,41 @@ async def ensure_user(user_id: int) -> None:
     async with aiosqlite.connect(config.DB_PATH) as db:
         await _grant_trial_if_new(db, user_id)
         await db.commit()
+
+
+async def add_subscription_days(user_id: int, days: int) -> None:
+    """Obunaga kun qo'shadi: paid_until = max(bugun, paid_until) + days."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET paid_until = date("
+            "  CASE WHEN paid_until IS NULL OR paid_until < date('now','localtime') "
+            "       THEN date('now','localtime') ELSE paid_until END, ?) "
+            "WHERE user_id = ?",
+            (f"+{days} days", user_id),
+        )
+        await db.commit()
+
+
+async def mark_onboarded(user_id: int, referred_by: Optional[int] = None) -> None:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        if referred_by:
+            await db.execute(
+                "UPDATE users SET onboarded = 1, referred_by = ? WHERE user_id = ?",
+                (referred_by, user_id),
+            )
+        else:
+            await db.execute(
+                "UPDATE users SET onboarded = 1 WHERE user_id = ?", (user_id,)
+            )
+        await db.commit()
+
+
+async def count_referrals(user_id: int) -> int:
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT COUNT(*) FROM users WHERE referred_by = ?", (user_id,)
+        )
+        return (await cur.fetchone())[0]
 
 
 def subscription_ok(paid_until: Optional[str]) -> bool:

@@ -7,7 +7,7 @@ import re
 from datetime import date, datetime
 
 from aiogram import F, Router
-from aiogram.filters import BaseFilter, Command
+from aiogram.filters import BaseFilter, Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
@@ -41,11 +41,47 @@ async def _lang(user_id: int) -> str:
 
 
 # --------------------------------------------------------------------- start
+def _parse_ref(args: str | None) -> int | None:
+    """"ref_1357290180" yoki "ref_1357290180_abc" dan referrer ID ni ajratadi."""
+    if not args or not args.startswith("ref_"):
+        return None
+    try:
+        return int(args.split("_")[1])
+    except (IndexError, ValueError):
+        return None
+
+
+async def _process_referral(message: Message, user: dict, args: str | None) -> None:
+    """Birinchi /start da referralni hisoblaydi (taklif qilgan userga bonus)."""
+    uid = message.from_user.id
+    ref_id = _parse_ref(args)
+    if ref_id and ref_id != uid and not user.get("referred_by"):
+        referrer = await db.get_user(ref_id)
+        if referrer:
+            await db.add_subscription_days(ref_id, config.REFERRAL_DAYS)
+            await db.mark_onboarded(uid, referred_by=ref_id)
+            try:  # taklif qilgan userga xabar berish
+                await message.bot.send_message(
+                    ref_id,
+                    t(referrer["lang"], "referral_earned", days=config.REFERRAL_DAYS),
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            return
+    await db.mark_onboarded(uid)
+
+
 @router.message(Command("start"))
-async def cmd_start(message: Message, state: FSMContext) -> None:
+async def cmd_start(message: Message, state: FSMContext, command: CommandObject) -> None:
     await state.clear()
     await db.ensure_user(message.from_user.id)
-    lang = await _lang(message.from_user.id)
+    user = await db.get_user(message.from_user.id)
+    lang = (user["lang"] if user else None) or "uz"
+
+    # Referral — faqat birinchi marta start bosilganda
+    if user and not user["onboarded"]:
+        await _process_referral(message, user, command.args)
+
     await send_menu(
         message,
         t(lang, "welcome") + "\n\n" + t(lang, "trial_note", days=config.TRIAL_DAYS),
@@ -85,6 +121,17 @@ async def on_menu(message: Message, state: FSMContext, action: str) -> None:
     if action == "sub":
         user = await db.get_user(uid)
         await send_menu(message, _sub_view(lang, user))
+        return
+
+    if action == "invite":
+        me = await message.bot.get_me()
+        link = f"https://t.me/{me.username}?start=ref_{uid}"
+        count = await db.count_referrals(uid)
+        await message.answer(
+            t(lang, "invite_text", link=link, days=config.REFERRAL_DAYS,
+              count=count, bonus=count * config.REFERRAL_DAYS),
+            reply_markup=keyboards.share_keyboard(lang, link),
+        )
         return
 
     if action == "login":

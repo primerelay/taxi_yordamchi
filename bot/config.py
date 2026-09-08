@@ -25,6 +25,9 @@ SEND_DELAY_SECONDS = float(os.getenv("SEND_DELAY_SECONDS", "4"))
 # Yangi foydalanuvchiga beriladigan bepul sinov kunlari
 TRIAL_DAYS = int(os.getenv("TRIAL_DAYS", "3"))
 
+# Do'st taklif qilgani uchun beriladigan bonus kunlar (har bir yangi user uchun)
+REFERRAL_DAYS = int(os.getenv("REFERRAL_DAYS", "3"))
+
 # To'lov uchun bog'lanadigan admin username (masalan @taxi_admin)
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "@admin")
 if SUPPORT_USERNAME and not SUPPORT_USERNAME.startswith("@"):

@@ -22,6 +22,7 @@ BUTTONS: dict[str, dict[str, str]] = {
     "logout":   {"uz": "🚪 Chiqish",          "ru": "🚪 Выйти",          "en": "🚪 Log out"},
     "lang":     {"uz": "🌐 Til",              "ru": "🌐 Язык",           "en": "🌐 Language"},
     "sub":      {"uz": "💳 Obuna",            "ru": "💳 Подписка",       "en": "💳 Subscription"},
+    "invite":   {"uz": "🎁 Do'stlarni taklif qilish", "ru": "🎁 Пригласить друзей", "en": "🎁 Invite friends"},
     "restart":  {"uz": "🔄 Qayta boshlash",   "ru": "🔄 Перезапуск",     "en": "🔄 Restart"},
 }
 
@@ -319,6 +320,44 @@ TEXTS: dict[str, dict[str, str]] = {
         "uz": "⛔️ Obuna muddati tugagan — bot ishlamaydi.\n\nTo'lov uchun admin bilan bog'laning: {admin}",
         "ru": "⛔️ Срок подписки истёк — бот не работает.\n\nДля оплаты свяжитесь с админом: {admin}",
         "en": "⛔️ Your subscription has expired — the bot won't run.\n\nTo pay, contact the admin: {admin}",
+    },
+    "invite_text": {
+        "uz": "🎁 <b>Do'stlarni taklif qiling</b>\n\n"
+              "Sizning referral havolangiz:\n{link}\n\n"
+              "Har bir do'stingiz shu havola orqali botga <b>birinchi marta</b> kirsa — "
+              "sizga <b>+{days} kun</b> qo'shiladi! 🎉\n\n"
+              "👥 Hozirgacha taklif qilganlaringiz: <b>{count}</b> ta\n"
+              "🎁 Jami olingan bonus: <b>{bonus}</b> kun\n\n"
+              "Quyidagi tugma bilan ulashing 👇",
+        "ru": "🎁 <b>Пригласите друзей</b>\n\n"
+              "Ваша реферальная ссылка:\n{link}\n\n"
+              "За каждого друга, впервые зашедшего по этой ссылке — "
+              "вам <b>+{days} дн.</b> 🎉\n\n"
+              "👥 Приглашено: <b>{count}</b>\n"
+              "🎁 Всего бонуса: <b>{bonus}</b> дн.\n\n"
+              "Поделитесь кнопкой ниже 👇",
+        "en": "🎁 <b>Invite friends</b>\n\n"
+              "Your referral link:\n{link}\n\n"
+              "For each friend who joins via this link for the <b>first time</b> — "
+              "you get <b>+{days} days</b>! 🎉\n\n"
+              "👥 Invited so far: <b>{count}</b>\n"
+              "🎁 Total bonus: <b>{bonus}</b> days\n\n"
+              "Share with the button below 👇",
+    },
+    "invite_share_btn": {
+        "uz": "📤 Do'stlarga ulashish",
+        "ru": "📤 Поделиться с друзьями",
+        "en": "📤 Share with friends",
+    },
+    "invite_share_text": {
+        "uz": "🚕 Taxi Yordamchi — xabaringizni guruhlarga avtomatik tarqatuvchi bot. Qo'shiling:",
+        "ru": "🚕 Taxi Yordamchi — бот для авторассылки в группы. Присоединяйтесь:",
+        "en": "🚕 Taxi Yordamchi — a bot that auto-posts your message to groups. Join:",
+    },
+    "referral_earned": {
+        "uz": "🎉 Yangi do'stingiz taklifingiz orqali qo'shildi!\n<b>+{days} kun</b> obunangizga qo'shildi. Rahmat! 🙌",
+        "ru": "🎉 Новый друг присоединился по вашему приглашению!\n<b>+{days} дн.</b> добавлено к подписке. Спасибо! 🙌",
+        "en": "🎉 A new friend joined via your invite!\n<b>+{days} days</b> added to your subscription. Thanks! 🙌",
     },
     "trial_note": {
         "uz": "🎁 Yangi foydalanuvchilarga <b>{days} kunlik bepul sinov</b> beriladi. "

@@ -32,3 +32,8 @@ REFERRAL_DAYS = int(os.getenv("REFERRAL_DAYS", "3"))
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "@admin")
 if SUPPORT_USERNAME and not SUPPORT_USERNAME.startswith("@"):
     SUPPORT_USERNAME = "@" + SUPPORT_USERNAME
+
+# Broadcast/e'lon yubora oladigan adminlarning Telegram ID lari (vergul bilan)
+ADMIN_IDS = {
+    int(x) for x in os.getenv("ADMIN_IDS", "").replace(" ", "").split(",") if x.strip()
+}

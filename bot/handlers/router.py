@@ -102,6 +102,65 @@ async def cmd_cancel(message: Message, state: FSMContext) -> None:
     await send_menu(message, t(lang, "cancelled"))
 
 
+# ============================ ADMIN: BROADCAST / E'LON ============================
+def _is_admin(user_id: int) -> bool:
+    return user_id in config.ADMIN_IDS
+
+
+async def _broadcast(bot, users: list[dict], text_fn, kb_fn=None) -> tuple[int, int]:
+    """Barcha userlarga yuboradi. Bloklagan/o'chirgan userlar o'tkazib yuboriladi."""
+    sent = failed = 0
+    for u in users:
+        try:
+            await bot.send_message(
+                u["user_id"], text_fn(u),
+                reply_markup=(kb_fn(u) if kb_fn else None),
+            )
+            sent += 1
+        except Exception:  # noqa: BLE001 — bloklagan/deaktiv userlar
+            failed += 1
+        await asyncio.sleep(0.05)  # Telegram limitidan oshmaslik uchun (~20/sek)
+    return sent, failed
+
+
+@router.message(Command("broadcast"))
+async def cmd_broadcast(message: Message, command: CommandObject) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    text = command.args
+    if not text and message.reply_to_message:
+        text = message.reply_to_message.text or message.reply_to_message.caption
+    if not text:
+        await message.answer(
+            "📢 Foydalanish: <code>/broadcast xabar matni</code>\n"
+            "(yoki biror xabarga reply qilib /broadcast yozing)"
+        )
+        return
+    users = await db.get_all_users()
+    await message.answer(f"⏳ {len(users)} ta foydalanuvchiga yuborilyapti...")
+    sent, failed = await _broadcast(message.bot, users, lambda u: text)
+    await message.answer(f"✅ Yuborildi: {sent} ta\n❌ Yuborilmadi: {failed} ta")
+
+
+@router.message(Command("announce_referral"))
+async def cmd_announce_referral(message: Message) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    users = await db.get_all_users()
+    me = await message.bot.get_me()
+    await message.answer(f"⏳ Referral e'loni {len(users)} ta userga yuborilyapti...")
+
+    def _link(u):
+        return f"https://t.me/{me.username}?start=ref_{u['user_id']}"
+
+    sent, failed = await _broadcast(
+        message.bot, users,
+        text_fn=lambda u: t(u["lang"], "referral_announce", days=config.REFERRAL_DAYS, link=_link(u)),
+        kb_fn=lambda u: keyboards.share_keyboard(u["lang"], _link(u)),
+    )
+    await message.answer(f"✅ Yuborildi: {sent} ta\n❌ Yuborilmadi: {failed} ta")
+
+
 # ============================ MENYU TUGMALARI (doim ishlaydi) ============================
 @router.message(MenuButton())
 async def on_menu(message: Message, state: FSMContext, action: str) -> None:

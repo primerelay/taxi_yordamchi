@@ -354,6 +354,23 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "🚕 Taxi Yordamchi — бот для авторассылки в группы. Присоединяйтесь:",
         "en": "🚕 Taxi Yordamchi — a bot that auto-posts your message to groups. Join:",
     },
+    "referral_announce": {
+        "uz": "🎉 <b>Yangi imkoniyat!</b>\n\n"
+              "Endi do'stlaringizni taklif qilib, <b>bepul kunlar</b> ishlab olishingiz mumkin! 🎁\n\n"
+              "Har bir do'stingiz sizning havolangiz orqali botga kirsa — sizga <b>+{days} kun</b> qo'shiladi.\n\n"
+              "Sizning havolangiz:\n{link}\n\n"
+              "Quyidagi tugma bilan do'stlaringizga ulashing 👇",
+        "ru": "🎉 <b>Новая возможность!</b>\n\n"
+              "Теперь можно получать <b>бесплатные дни</b>, приглашая друзей! 🎁\n\n"
+              "За каждого друга, зашедшего по вашей ссылке — вам <b>+{days} дн.</b>\n\n"
+              "Ваша ссылка:\n{link}\n\n"
+              "Поделитесь с друзьями кнопкой ниже 👇",
+        "en": "🎉 <b>New feature!</b>\n\n"
+              "Now you can earn <b>free days</b> by inviting friends! 🎁\n\n"
+              "For each friend who joins via your link — you get <b>+{days} days</b>.\n\n"
+              "Your link:\n{link}\n\n"
+              "Share with friends using the button below 👇",
+    },
     "referral_earned": {
         "uz": "🎉 Yangi do'stingiz taklifingiz orqali qo'shildi!\n<b>+{days} kun</b> obunangizga qo'shildi. Rahmat! 🙌",
         "ru": "🎉 Новый друг присоединился по вашему приглашению!\n<b>+{days} дн.</b> добавлено к подписке. Спасибо! 🙌",

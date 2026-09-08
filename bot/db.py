@@ -309,6 +309,14 @@ async def get_selected_groups(user_id: int) -> list[dict]:
         return [dict(r) for r in await cur.fetchall()]
 
 
+async def get_all_users() -> list[dict]:
+    """Broadcast uchun barcha foydalanuvchilar (user_id + lang)."""
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT user_id, lang FROM users")
+        return [dict(r) for r in await cur.fetchall()]
+
+
 async def get_active_users() -> list[dict]:
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row

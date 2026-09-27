@@ -391,6 +391,11 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "🎉 Новый друг присоединился по вашему приглашению!\n<b>+{days} дн.</b> добавлено к подписке. Спасибо! 🙌",
         "en": "🎉 A new friend joined via your invite!\n<b>+{days} days</b> added to your subscription. Thanks! 🙌",
     },
+    "sub_extended": {
+        "uz": "🎉 Obunangiz uzaytirildi! <b>+{days} kun</b> qo'shildi.\nYangi muddat: <b>{date}</b>",
+        "ru": "🎉 Ваша подписка продлена! Добавлено <b>+{days} дн.</b>\nНовый срок: <b>{date}</b>",
+        "en": "🎉 Your subscription was extended! <b>+{days} days</b> added.\nValid until: <b>{date}</b>",
+    },
     "trial_note": {
         "uz": "🎁 Yangi foydalanuvchilarga <b>{days} kunlik bepul sinov</b> beriladi. "
               "Muddatni «💳 Obuna» tugmasidan ko'ring.",

@@ -11,3 +11,7 @@ class Auth(StatesGroup):
 class Compose(StatesGroup):
     waiting_template = State()
     waiting_interval = State()
+
+
+class AdminFlow(StatesGroup):
+    waiting_broadcast = State()  # /elon: tarqatiladigan xabarni kutish

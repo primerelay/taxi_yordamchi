@@ -8,13 +8,19 @@ import re
 from datetime import date, datetime
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from aiogram.filters import BaseFilter, Command, CommandObject
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 
-from .. import config, db, i18n, keyboards, scheduler, userbot
+from .. import config, db, i18n, keyboards, reports, scheduler, userbot
 from ..i18n import button_action, fmt_interval, t
-from ..states import Auth, Compose
+from ..states import AdminFlow, Auth, Compose
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -72,7 +78,7 @@ async def _process_referral(message: Message, user: dict, args: str | None) -> N
     await db.mark_onboarded(uid)
 
 
-@router.message(Command("start"))
+@router.message(Command("start"), F.chat.type == "private")
 async def cmd_start(message: Message, state: FSMContext, command: CommandObject) -> None:
     await state.clear()
     await db.ensure_user(message.from_user.id)
@@ -91,11 +97,18 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
 
 @router.message(Command("id"))
 async def cmd_id(message: Message) -> None:
+    # Guruhda chat id ni ham ko'rsatamiz (ADMIN_GROUP_ID ni sozlash uchun qulay).
+    if message.chat.type != "private":
+        await message.answer(
+            f"🆔 Guruh (chat) id: <code>{message.chat.id}</code>\n"
+            f"👤 Sizning id: <code>{message.from_user.id}</code>"
+        )
+        return
     lang = await _lang(message.from_user.id)
     await message.answer(t(lang, "id_text", id=message.from_user.id))
 
 
-@router.message(Command("cancel"))
+@router.message(Command("cancel"), F.chat.type == "private")
 async def cmd_cancel(message: Message, state: FSMContext) -> None:
     await state.clear()
     await userbot.cancel_login(message.from_user.id)
@@ -162,8 +175,193 @@ async def cmd_announce_referral(message: Message) -> None:
     await message.answer(f"✅ Yuborildi: {sent} ta\n❌ Yuborilmadi: {failed} ta")
 
 
+# ============================ ADMIN GURUH BUYRUQLARI ============================
+# Bu buyruqlar FAQAT ADMIN_GROUP_ID guruhida ishlaydi (boshqa joyda jim qaytadi).
+def _in_admin_group(message: Message) -> bool:
+    return bool(config.ADMIN_GROUP_ID) and message.chat.id == config.ADMIN_GROUP_ID
+
+
+_ADMIN_HELP = (
+    "🛠 <b>Admin buyruqlari</b>\n\n"
+    "📢 <code>/elon</code> — ommaviy e'lon. Buyruqdan keyin matn yoki rasm (izoh bilan) "
+    "yuboring, tasdiqlang — barcha foydalanuvchilarga tarqaladi.\n"
+    "❌ <code>/bekor</code> — boshlangan e'lonni bekor qilish.\n\n"
+    "📊 <code>/kunlik</code> — kunlik hisobotni (kecha nechta odam ishlatgan, qancha pul "
+    "tushgan, top to'lovchilar) hoziroq guruhga yuborish.\n\n"
+    "➕ <code>/add_days @username 30</code> — foydalanuvchi obunasiga kun qo'shish.\n"
+    "   Yoki ID bilan: <code>/add_days 123456789 30</code>\n\n"
+    "❓ <code>/help</code> — shu ro'yxat.\n\n"
+    "ℹ️ Kunlik hisobot avtomatik har kuni soat "
+    f"{config.REPORT_HOUR:02d}:00 (Toshkent) da yuboriladi."
+)
+
+
+@router.message(Command("help"))
+async def cmd_help(message: Message) -> None:
+    if not _in_admin_group(message):
+        return
+    await message.answer(_ADMIN_HELP)
+
+
+@router.message(Command("kunlik"))
+async def cmd_kunlik(message: Message) -> None:
+    if not _in_admin_group(message):
+        return
+    wait = await message.answer("⏳ Kunlik hisobot tayyorlanmoqda...")
+    try:
+        summary = await reports.send_report(message.bot)
+        await wait.edit_text(f"✅ Hisobot yuborildi.\n{summary}")
+    except Exception as e:  # noqa: BLE001
+        await wait.edit_text(f"❌ Xatolik: {e}")
+
+
+@router.message(Command("add_days"))
+async def cmd_add_days(message: Message, command: CommandObject) -> None:
+    if not _in_admin_group(message):
+        return
+    parts = (command.args or "").split()
+    if len(parts) < 2:
+        await message.answer(
+            "📝 <b>Foydalanish:</b>\n"
+            "<code>/add_days @username 30</code>\n"
+            "<code>/add_days 123456789 30</code>"
+        )
+        return
+    identifier, days_raw = parts[0], parts[1]
+    try:
+        days = int(days_raw)
+    except ValueError:
+        await message.answer("❌ Kun soni noto'g'ri. Butun raqam kiriting.")
+        return
+    if days == 0:
+        await message.answer("❌ Kun soni 0 bo'lishi mumkin emas.")
+        return
+
+    user = await db.find_user(identifier)
+    if not user:
+        await message.answer(f"❌ Foydalanuvchi topilmadi: {identifier}")
+        return
+
+    await db.add_subscription_days(user["user_id"], days)
+    fresh = await db.get_user(user["user_id"])
+    name = user.get("full_name") or "—"
+    uname = f"@{user['username']}" if user.get("username") else "—"
+    await message.answer(
+        f"✅ <b>Obuna yangilandi!</b>\n\n"
+        f"👤 {name} ({uname})\n"
+        f"🆔 <code>{user['user_id']}</code>\n"
+        f"➕ Qo'shildi: <b>{days}</b> kun\n"
+        f"📅 Yangi muddat: <b>{fresh['paid_until']}</b>"
+    )
+    # Foydalanuvchiga xabar berishga urinamiz (bloklagan bo'lsa — jim).
+    try:
+        lang = fresh.get("lang") or "uz"
+        await message.bot.send_message(user["user_id"], t(lang, "sub_extended", days=days, date=fresh["paid_until"]))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+@router.message(Command("elon"))
+async def cmd_elon(message: Message, state: FSMContext) -> None:
+    if not _in_admin_group(message):
+        return
+    await state.set_state(AdminFlow.waiting_broadcast)
+    await message.answer(
+        "📢 <b>E'lon yuborish</b>\n\n"
+        "Endi tarqatmoqchi bo'lgan xabaringizni yuboring — matn yoki rasm/video (izoh bilan).\n\n"
+        "Bekor qilish uchun /bekor"
+    )
+
+
+@router.message(Command("bekor"))
+async def cmd_bekor(message: Message, state: FSMContext) -> None:
+    if not _in_admin_group(message):
+        return
+    cur = await state.get_state()
+    if cur == AdminFlow.waiting_broadcast.state:
+        await state.clear()
+        await message.answer("❌ E'lon bekor qilindi.")
+
+
+@router.message(AdminFlow.waiting_broadcast)
+async def on_elon_capture(message: Message, state: FSMContext) -> None:
+    """Admin tarqatmoqchi bo'lgan xabarni ushlab, tasdiq so'raydi."""
+    if not _in_admin_group(message):
+        return
+    await state.clear()
+    total = len(await db.get_all_users())
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="✅ Ha, yuborish",
+            callback_data=f"elon_go:{message.chat.id}:{message.message_id}",
+        ),
+        InlineKeyboardButton(text="❌ Yo'q", callback_data="elon_no"),
+    ]])
+    await message.reply(
+        f"📢 Yuqoridagi xabar <b>{total}</b> ta foydalanuvchiga yuborilsinmi?",
+        reply_markup=kb,
+    )
+
+
+@router.callback_query(F.data == "elon_no")
+async def cb_elon_no(cb: CallbackQuery) -> None:
+    await cb.answer("Bekor qilindi")
+    try:
+        await cb.message.edit_text("❌ E'lon bekor qilindi.")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+@router.callback_query(F.data.startswith("elon_go:"))
+async def cb_elon_go(cb: CallbackQuery) -> None:
+    if not (config.ADMIN_GROUP_ID and cb.message.chat.id == config.ADMIN_GROUP_ID):
+        await cb.answer("Ruxsat yo'q")
+        return
+    _, from_chat_id, message_id = cb.data.split(":")
+    await cb.answer("Boshlandi")
+    try:
+        await cb.message.edit_text("📤 E'lon tarqatilmoqda...")
+    except Exception:  # noqa: BLE001
+        pass
+    # Fon vazifasi — callback darhol qaytadi, yakunda xulosa yuboriladi.
+    asyncio.create_task(
+        _broadcast_copy(cb.message.bot, int(from_chat_id), int(message_id), cb.message.chat.id)
+    )
+
+
+async def _broadcast_copy(bot, from_chat_id: int, message_id: int, report_chat_id: int) -> None:
+    """Asl xabarni (matn/rasm/video, formatlash saqlanadi) har bir userga nusxalaydi."""
+    users = await db.get_all_users()
+    total, sent, blocked, failed = len(users), 0, 0, 0
+    for u in users:
+        uid = u["user_id"]
+        try:
+            await bot.copy_message(uid, from_chat_id, message_id)
+            sent += 1
+        except TelegramForbiddenError:
+            blocked += 1  # bot bloklangan / akkaunt o'chirilgan
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(e.retry_after + 1)
+            try:
+                await bot.copy_message(uid, from_chat_id, message_id)
+                sent += 1
+            except Exception:  # noqa: BLE001
+                failed += 1
+        except Exception:  # noqa: BLE001
+            failed += 1
+        await asyncio.sleep(0.05)  # ~20/sek — Telegram limitidan past
+    try:
+        await bot.send_message(
+            report_chat_id,
+            f"✅ E'lon yakunlandi.\n\n📨 Yuborildi: {sent}\n🚫 Bloklagan: {blocked}\n"
+            f"⚠️ Xato: {failed}\n👥 Jami: {total}",
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
 # ============================ MENYU TUGMALARI (doim ishlaydi) ============================
-@router.message(MenuButton())
+@router.message(MenuButton(), F.chat.type == "private")
 async def on_menu(message: Message, state: FSMContext, action: str) -> None:
     uid = message.from_user.id
     lang = await _lang(uid)
@@ -721,7 +919,7 @@ async def cb_groups_done(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 # ============================ FALLBACK ============================
-@router.message()
+@router.message(F.chat.type == "private")
 async def fallback(message: Message, state: FSMContext) -> None:
     lang = await _lang(message.from_user.id)
     await send_menu(message, t(lang, "fallback"))

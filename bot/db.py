@@ -1,11 +1,20 @@
 """SQLite ma'lumotlar bazasi (aiosqlite)."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import aiosqlite
 
 from . import config
+
+_TZ = ZoneInfo(config.TIMEZONE)
+
+
+def tashkent_day() -> str:
+    """Bugungi kun (Toshkent) — 'YYYY-MM-DD'."""
+    return datetime.now(_TZ).strftime("%Y-%m-%d")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -52,6 +61,12 @@ CREATE TABLE IF NOT EXISTS templates (
     media_path TEXT,                          -- rasm/video fayl yo'li
     media_type TEXT,                          -- 'photo' | 'video' | NULL
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS activity_log (
+    user_id INTEGER NOT NULL,
+    day     TEXT NOT NULL,                     -- Toshkent kuni (YYYY-MM-DD)
+    PRIMARY KEY (user_id, day)
 );
 """
 
@@ -120,6 +135,11 @@ async def touch_user(
             "full_name = COALESCE(?, full_name), username = COALESCE(?, username) "
             "WHERE user_id = ?",
             (full_name, username, user_id),
+        )
+        # Kunlik faollik (Toshkent kuni bo'yicha) — kunlik hisobot uchun.
+        await db.execute(
+            "INSERT OR IGNORE INTO activity_log (user_id, day) VALUES (?, ?)",
+            (user_id, tashkent_day()),
         )
         await db.commit()
 
@@ -382,3 +402,78 @@ async def get_active_users() -> list[dict]:
         db.row_factory = aiosqlite.Row
         cur = await db.execute("SELECT * FROM users WHERE active = 1")
         return [dict(r) for r in await cur.fetchall()]
+
+
+async def find_user(identifier: str) -> Optional[dict]:
+    """Foydalanuvchini @username yoki Telegram id bo'yicha topadi."""
+    ident = identifier.strip().lstrip("@")
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if ident.isdigit():
+            cur = await db.execute(
+                "SELECT * FROM users WHERE user_id = ?", (int(ident),)
+            )
+        else:
+            cur = await db.execute(
+                "SELECT * FROM users WHERE username = ? COLLATE NOCASE", (ident,)
+            )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+# ------------------------------------------------------------ kunlik hisobot
+async def report_data(day: str, start_utc: str, end_utc: str, top_n: int) -> dict:
+    """Kunlik hisobot uchun ma'lumotlar.
+
+    day       — hisobot kuni (Toshkent, 'YYYY-MM-DD') — faollik uchun.
+    start/end — o'sha Toshkent kunining UTC oralig'i — created_at/paid_at uchun.
+    """
+    async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        async def scalar(sql: str, params: tuple = ()) -> float:
+            cur = await db.execute(sql, params)
+            row = await cur.fetchone()
+            return (row[0] if row and row[0] is not None else 0)
+
+        active_yesterday = await scalar(
+            "SELECT COUNT(DISTINCT user_id) FROM activity_log WHERE day = ?", (day,)
+        )
+        new_users = await scalar(
+            "SELECT COUNT(*) FROM users WHERE created_at >= ? AND created_at < ?",
+            (start_utc, end_utc),
+        )
+        total_users = await scalar("SELECT COUNT(*) FROM users")
+        broadcasting_now = await scalar("SELECT COUNT(*) FROM users WHERE active = 1")
+        logged_in = await scalar(
+            "SELECT COUNT(*) FROM users WHERE session IS NOT NULL AND session <> ''"
+        )
+        revenue = await scalar(
+            "SELECT SUM(amount) FROM payments WHERE paid_at >= ? AND paid_at < ?",
+            (start_utc, end_utc),
+        )
+        payments_count = await scalar(
+            "SELECT COUNT(*) FROM payments WHERE paid_at >= ? AND paid_at < ?",
+            (start_utc, end_utc),
+        )
+
+        # Kecha top to'lovchilar (summasi bo'yicha).
+        cur = await db.execute(
+            "SELECT p.user_id, SUM(p.amount) AS total, u.full_name, u.username "
+            "FROM payments p LEFT JOIN users u ON u.user_id = p.user_id "
+            "WHERE p.paid_at >= ? AND p.paid_at < ? "
+            "GROUP BY p.user_id ORDER BY total DESC LIMIT ?",
+            (start_utc, end_utc, top_n),
+        )
+        top_payers = [dict(r) for r in await cur.fetchall()]
+
+    return {
+        "active_yesterday": int(active_yesterday),
+        "new_users": int(new_users),
+        "total_users": int(total_users),
+        "broadcasting_now": int(broadcasting_now),
+        "logged_in": int(logged_in),
+        "revenue": int(revenue),
+        "payments_count": int(payments_count),
+        "top_payers": top_payers,
+    }

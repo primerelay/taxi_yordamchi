@@ -17,6 +17,9 @@ class ActivityMiddleware(BaseMiddleware):
         data: dict[str, Any],
     ) -> Any:
         user: User | None = data.get("event_from_user")
-        if user and not user.is_bot:
+        chat = data.get("event_chat")
+        # Faqat shaxsiy chatdagi (haydovchi) foydalanuvchilarni hisobga olamiz —
+        # admin guruhdagi xabarlar DAU/user statistikasini ifloslantirmasin.
+        if user and not user.is_bot and (chat is None or chat.type == "private"):
             await db.touch_user(user.id, user.full_name, user.username)
         return await handler(event, data)

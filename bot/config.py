@@ -39,3 +39,13 @@ if SUPPORT_USERNAME and not SUPPORT_USERNAME.startswith("@"):
 ADMIN_IDS = {
     int(x) for x in os.getenv("ADMIN_IDS", "").replace(" ", "").split(",") if x.strip()
 }
+
+# Admin buyruqlari (/elon, /kunlik, /add_days ...) FAQAT shu guruhda ishlaydi.
+# Kunlik hisobot ham shu guruhga yuboriladi. Guruh id manfiy bo'ladi (masalan -1001234567890).
+# Bot shu guruhga a'zo bo'lishi va privacy mode O'CHIQ bo'lishi kerak (oddiy xabarlarni ko'rishi uchun).
+ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID", "0"))
+
+# Kunlik hisobot vaqti (Toshkent) va top ro'yxat uzunligi.
+REPORT_HOUR = int(os.getenv("REPORT_HOUR", "9"))
+REPORT_TOP_N = int(os.getenv("REPORT_TOP_N", "50"))
+TIMEZONE = os.getenv("TIMEZONE", "Asia/Tashkent")

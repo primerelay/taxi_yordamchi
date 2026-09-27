@@ -150,7 +150,14 @@ SEND_DELAY_SECONDS=4      # delay between groups (flood protection)
 TRIAL_DAYS=3              # free trial for new users
 REFERRAL_DAYS=3           # bonus per invited user
 SUPPORT_USERNAME=@...     # payment contact shown to users
-ADMIN_IDS=123,456         # Telegram ids allowed to /broadcast, /announce_referral
+ADMIN_IDS=123,456         # Telegram ids allowed to /broadcast, /announce_referral (DM)
+# --- admin group (new commands live here) ---
+ADMIN_GROUP_ID=-100...    # /elon, /kunlik, /add_days, /help work ONLY here; daily report target
+REPORT_HOUR=9             # daily report hour (Asia/Tashkent)
+REPORT_TOP_N=50           # top payers listed in the daily report
+TIMEZONE=Asia/Tashkent    # timezone for the daily report window
+# NOTE: bot must be a member of ADMIN_GROUP_ID and privacy mode OFF (BotFather /setprivacy)
+#       so it can see the plain announcement message during /elon.
 # --- admin panel ---
 ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_SECRET_KEY
 ADMIN_HOST=127.0.0.1, ADMIN_PORT=8010
@@ -190,17 +197,37 @@ ADMIN_CORS_ORIGINS=https://taxi.tezhisobchi.uz
   Use `t(lang, key, **fmt)`. Add all 3 languages when adding a string.
 - **Interval is in seconds** everywhere (`interval_seconds`). `interval_minutes` column is
   legacy/unused. Display via `i18n.fmt_interval(lang, seconds)`.
+- **Admin group is group-gated, driver flow is private-gated.** New admin commands run only if
+  `chat.id == ADMIN_GROUP_ID` (else silent). Driver handlers (`on_menu`, fallback, start/cancel)
+  are `F.chat.type == "private"`, and `ActivityMiddleware` skips non-private chats — so the bot
+  sitting in the admin group never pollutes DAU/user stats or replies to group chatter. Admin
+  command strings are Uzbek-only (not i18n'd) — they only ever show in the admin group.
+- **Daily report = asyncio loop, not APScheduler** (`bot/reports.py`), same rationale as the
+  scheduler: sleep-until-next-09:00-Tashkent → send → repeat. `activity_log(user_id, day)`
+  (Tashkent day, upserted in `touch_user`) powers accurate "active yesterday" counts; revenue /
+  new-users use UTC windows converted from the Tashkent day (assumes server TZ = UTC).
 
 ---
 
 ## 9. Admin / bot commands
 
 - `/start [ref_<id>]` — main menu; processes referral on first start.
-- `/id` — shows the user's Telegram id (needed for `ADMIN_IDS`).
+- `/id` — shows the user's Telegram id (needed for `ADMIN_IDS`). In a **group** it also shows
+  the group's chat id (handy for setting `ADMIN_GROUP_ID`).
 - `/cancel` — cancel current flow.
-- `/broadcast <text>` — (admin only) send text to all users.
-- `/announce_referral` — (admin only) send the referral announcement to every user in their
+- `/broadcast <text>` — (admin only, DM) send text to all users. Legacy; prefer `/elon`.
+- `/announce_referral` — (admin only, DM) send the referral announcement to every user in their
   language, each with their personal invite link + share button.
+
+**Admin-group commands** (work ONLY inside `ADMIN_GROUP_ID`; silent everywhere else — see §8):
+- `/elon` — public announcement: send text or photo/video (with caption), confirm with buttons,
+  then it's copied (`copy_message`) to every user; progress summary reported back.
+- `/bekor` — cancel a started `/elon`.
+- `/kunlik` — send the daily report to the group now (yesterday's new/active users, currently
+  broadcasting, logged-in, revenue + top payers). Auto-sent daily at `REPORT_HOUR` (Tashkent).
+- `/add_days @username 30` (or `/add_days <id> 30`) — add subscription days to a user; the user
+  is notified. Our model has no money balance — days extend `paid_until`.
+- `/help` — admin command reference.
 
 ---
 

@@ -9,7 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from . import config, db, scheduler
+from . import config, db, reports, scheduler
 from .handlers import router
 from .middleware import ActivityMiddleware
 
@@ -32,6 +32,9 @@ async def main() -> None:
 
     scheduler.start()
     await scheduler.restore_jobs()
+
+    # Kunlik hisobot (09:00 Toshkent) — alohida fon vazifasi.
+    asyncio.create_task(reports.daily_report_loop(bot))
 
     logging.info("Bot ishga tushdi.")
     await dp.start_polling(bot)

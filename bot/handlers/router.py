@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 from datetime import date, datetime
 
@@ -243,17 +244,32 @@ def _preview(text: str, limit: int = 120) -> str:
     return text if len(text) <= limit else text[:limit] + "…"
 
 
+def _media_tag(lang: str, media_type: str | None) -> str:
+    """Media turi uchun yorliq: '🖼 Rasm' / '🎬 Video' / ''."""
+    if media_type in ("photo", "video"):
+        return t(lang, f"media_{media_type}")
+    return ""
+
+
 async def _templates_view(user_id: int, lang: str) -> tuple[str, object]:
     """Shablonlar menyusi matni + inline klaviaturasini qaytaradi."""
     user = await db.get_user(user_id)
-    active = (user["message"] if user else None) or None
+    active_text = (user["message"] if user else None) or None
+    active_media = (user["media_type"] if user else None) or None
+    active_id = user["active_template_id"] if user else None
     templates = await db.list_templates(user_id)
     text = t(lang, "tpl_menu")
-    if active:
-        text += f"\n\n{t(lang, 'tpl_active_label')}\n<code>{_preview(active)}</code>"
+    if active_text or active_media:
+        parts = []
+        tag = _media_tag(lang, active_media)
+        if tag:
+            parts.append(tag)
+        if active_text:
+            parts.append(f"<code>{_preview(active_text)}</code>")
+        text += f"\n\n{t(lang, 'tpl_active_label')}\n" + "\n".join(parts)
     else:
         text += f"\n\n{t(lang, 'tpl_none_active')}"
-    return text, keyboards.templates_keyboard(lang, templates, active)
+    return text, keyboards.templates_keyboard(lang, templates, active_id)
 
 
 async def _open_groups(message: Message, state: FSMContext, lang: str, user: dict) -> None:
@@ -306,7 +322,7 @@ async def _do_start(message: Message, state: FSMContext, lang: str, user: dict) 
     problems = []
     if not user or not user["session"]:
         problems.append(t(lang, "prob_login"))
-    if not user or not user["message"]:
+    if not user or (not user["message"] and not user["media_path"]):
         problems.append(t(lang, "prob_message"))
     if not user or not user["interval_seconds"]:
         problems.append(t(lang, "prob_interval"))
@@ -327,9 +343,14 @@ async def _do_start(message: Message, state: FSMContext, lang: str, user: dict) 
 async def _show_status(message: Message, lang: str, user: dict) -> None:
     selected = await db.get_selected_groups(message.from_user.id)
     dash = t(lang, "dash")
-    msg = (user["message"] if user else None) or dash
+    msg = (user["message"] if user else None) or ""
     if len(msg) > 200:
         msg = msg[:200] + "…"
+    tag = _media_tag(lang, user["media_type"] if user else None)
+    if tag:  # media bo'lsa turini oldiga qo'shamiz
+        msg = f"[{tag}] {msg}".strip()
+    if not msg:
+        msg = dash
     interval = (
         fmt_interval(lang, user["interval_seconds"])
         if user and user["interval_seconds"] else dash
@@ -534,7 +555,9 @@ async def cb_tpl_activate(cb: CallbackQuery, state: FSMContext) -> None:
     if not tp:
         await cb.answer()
         return
-    await db.set_message(cb.from_user.id, tp["text"])  # faollashtirish
+    await db.set_active_message(  # faollashtirish (matn + media)
+        cb.from_user.id, tp["text"], tp["media_path"], tp["media_type"], tp["id"]
+    )
     text, kb = await _templates_view(cb.from_user.id, lang)
     try:
         await cb.message.edit_text(text, reply_markup=kb)
@@ -547,7 +570,12 @@ async def cb_tpl_activate(cb: CallbackQuery, state: FSMContext) -> None:
 async def cb_tpl_delete(cb: CallbackQuery, state: FSMContext) -> None:
     lang = await _lang(cb.from_user.id)
     tpl_id = int(cb.data.split(":", 1)[1])
-    await db.delete_template(cb.from_user.id, tpl_id)
+    orphan_media = await db.delete_template(cb.from_user.id, tpl_id)
+    if orphan_media:  # boshqa shablon ishlatmaydigan faylni diskdan o'chiramiz
+        try:
+            os.remove(orphan_media)
+        except OSError:
+            pass
     text, kb = await _templates_view(cb.from_user.id, lang)
     try:
         await cb.message.edit_text(text, reply_markup=kb)
@@ -556,18 +584,45 @@ async def cb_tpl_delete(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer(t(lang, "tpl_deleted"))
 
 
+def _extract_media(message: Message):
+    """Xabardan media ajratadi: (obj, media_type, ext) yoki (None, None, None)."""
+    if message.photo:
+        return message.photo[-1], "photo", "jpg"  # eng katta o'lchamdagi rasm
+    if message.video:
+        name = message.video.file_name or ""
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else "mp4"
+        return message.video, "video", ext
+    return None, None, None
+
+
 @router.message(Compose.waiting_template)
 async def on_template_text(message: Message, state: FSMContext) -> None:
-    lang = await _lang(message.from_user.id)
-    text = message.text or message.caption
-    if not text:
+    uid = message.from_user.id
+    lang = await _lang(uid)
+    media_obj, media_type, ext = _extract_media(message)
+    text = (message.text or message.caption or "").strip() or None
+    if not media_obj and not text:
         await message.answer(t(lang, "msg_empty"))
         return
-    await db.add_template(message.from_user.id, text)
-    await db.set_message(message.from_user.id, text)  # yangi shablonni darhol faollashtirish
+
+    media_path = None
+    if media_obj:
+        os.makedirs(config.MEDIA_DIR, exist_ok=True)
+        media_path = os.path.join(
+            config.MEDIA_DIR, f"{uid}_{media_obj.file_unique_id}.{ext}"
+        )
+        try:
+            await message.bot.download(media_obj, destination=media_path)
+        except Exception as e:  # noqa: BLE001 — 20MB limit yoki tarmoq xatosi
+            await message.answer(t(lang, "media_error", err=e))
+            return
+
+    tpl_id = await db.add_template(uid, text, media_path, media_type)
+    # yangi shablonni darhol faollashtirish (matn + media)
+    await db.set_active_message(uid, text, media_path, media_type, tpl_id)
     await state.clear()
     await message.answer(t(lang, "tpl_saved"))
-    view_text, kb = await _templates_view(message.from_user.id, lang)
+    view_text, kb = await _templates_view(uid, lang)
     await message.answer(view_text, reply_markup=kb)
 
 

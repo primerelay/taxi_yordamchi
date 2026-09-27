@@ -96,11 +96,18 @@ def lang_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def templates_keyboard(lang: str, templates: list[dict], active_text: str | None) -> InlineKeyboardMarkup:
+_MEDIA_ICON = {"photo": "🖼", "video": "🎬"}
+
+
+def templates_keyboard(
+    lang: str, templates: list[dict], active_id: int | None
+) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     for tp in templates:
-        label = tp["text"].splitlines()[0][:32] if tp["text"] else "—"
-        mark = "✅ " if active_text and tp["text"] == active_text else "▫️ "
+        icon = _MEDIA_ICON.get(tp.get("media_type") or "", "")
+        first_line = tp["text"].splitlines()[0][:32] if tp.get("text") else ""
+        label = f"{icon} {first_line}".strip() or "—"
+        mark = "✅ " if active_id is not None and tp["id"] == active_id else "▫️ "
         rows.append([
             InlineKeyboardButton(text=mark + label, callback_data=f"tpl:{tp['id']}"),
             InlineKeyboardButton(text="🗑", callback_data=f"tpldel:{tp['id']}"),

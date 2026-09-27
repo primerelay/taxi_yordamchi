@@ -21,15 +21,19 @@ _tasks: dict[int, asyncio.Task] = {}
 async def _run_once(user_id: int) -> bool:
     """Bir marta tarqatadi. False qaytarsa — to'xtatish kerak (obuna yo'q/tayyor emas)."""
     user = await db.get_user(user_id)
-    if not user or not user["active"] or not user["session"] or not user["message"]:
+    if not user or not user["active"] or not user["session"]:
         return True  # hali tayyor emas, lekin loop davom etaveradi
+    if not user["message"] and not user["media_path"]:
+        return True  # matn ham, media ham yo'q
     if not db.subscription_ok(user["paid_until"]):
         log.info("user=%s obuna tugagan — yuborilmadi", user_id)
         return True
     chat_ids = list(await db.get_selected_group_ids(user_id))
     if not chat_ids:
         return True
-    result = await userbot.broadcast(user["session"], chat_ids, user["message"])
+    result = await userbot.broadcast(
+        user["session"], chat_ids, user["message"], user["media_path"], user["media_type"]
+    )
     log.info(
         "user=%s yuborildi=%s xato=%s", user_id, result["sent"], len(result["failed"])
     )

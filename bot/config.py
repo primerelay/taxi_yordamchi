@@ -18,6 +18,8 @@ API_HASH = _require("API_HASH")
 BOT_TOKEN = _require("BOT_TOKEN")
 
 DB_PATH = os.getenv("DB_PATH", "taxi_bot.db")
+# Rasm/video shablonlari saqlanadigan papka (git bilan yuborilmaydi, deploy da saqlanadi).
+MEDIA_DIR = os.getenv("MEDIA_DIR", "media")
 # Minimal interval (soniyada). Juda kichik qilsangiz akkaunt bloklanishi mumkin.
 MIN_INTERVAL_SECONDS = int(os.getenv("MIN_INTERVAL_SECONDS", "30"))
 SEND_DELAY_SECONDS = float(os.getenv("SEND_DELAY_SECONDS", "4"))

@@ -80,9 +80,22 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "➕ New template",
     },
     "tpl_prompt": {
-        "uz": "✍️ Yangi shablon matnini yuboring.\n\nMasalan:\n<i>Farg'ona → Toshkent, 4 o'rin bor 🚕 tel: ...</i>",
-        "ru": "✍️ Отправьте текст нового шаблона.\n\nНапример:\n<i>Фергана → Ташкент, 4 места 🚕 тел: ...</i>",
-        "en": "✍️ Send the text of the new template.\n\nExample:\n<i>Fergana → Tashkent, 4 seats 🚕 tel: ...</i>",
+        "uz": "✍️ Yangi shablonni yuboring.\n\n• Oddiy matn, yoki\n• Rasm/video — izoh (caption) bilan birga.\n\n"
+              "Masalan:\n<i>Farg'ona → Toshkent, 4 o'rin bor 🚕 tel: ...</i>",
+        "ru": "✍️ Отправьте новый шаблон.\n\n• Обычный текст, или\n• Фото/видео — вместе с подписью.\n\n"
+              "Например:\n<i>Фергана → Ташкент, 4 места 🚕 тел: ...</i>",
+        "en": "✍️ Send a new template.\n\n• Plain text, or\n• A photo/video — together with a caption.\n\n"
+              "Example:\n<i>Fergana → Tashkent, 4 seats 🚕 tel: ...</i>",
+    },
+    "media_photo": {"uz": "🖼 Rasm", "ru": "🖼 Фото", "en": "🖼 Photo"},
+    "media_video": {"uz": "🎬 Video", "ru": "🎬 Видео", "en": "🎬 Video"},
+    "media_error": {
+        "uz": "❌ Faylni yuklab bo'lmadi: {err}\n\nEslatma: bot 20 MB dan katta fayllarni qabul qila olmaydi. "
+              "Kichikroq video yuboring yoki matn sifatida joylang.",
+        "ru": "❌ Не удалось загрузить файл: {err}\n\nПримечание: бот не принимает файлы больше 20 МБ. "
+              "Отправьте видео поменьше или используйте текст.",
+        "en": "❌ Could not download the file: {err}\n\nNote: the bot cannot accept files larger than 20 MB. "
+              "Send a smaller video or use text.",
     },
     "tpl_saved": {
         "uz": "✅ Shablon saqlandi va faollashtirildi.",

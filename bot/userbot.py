@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError, SessionPasswordNeededError
@@ -118,30 +119,49 @@ async def get_groups(session: str) -> list[dict]:
         await client.disconnect()
 
 
-async def broadcast(session: str, chat_ids: list[int], text: str) -> dict:
+async def broadcast(
+    session: str,
+    chat_ids: list[int],
+    text: str | None,
+    media_path: str | None = None,
+    media_type: str | None = None,
+) -> dict:
     """
-    Berilgan guruhlarga xabar yuboradi.
+    Berilgan guruhlarga xabar yuboradi (matn va/yoki rasm/video).
     Guruhlar orasida kechikish qo'yiladi, FloodWait boshqariladi.
     Qaytaradi: {"sent": int, "failed": [(chat_id, sabab), ...]}
     """
+    # Media belgilangan-u, lekin fayl topilmasa — faqat matn bilan yuboramiz.
+    if media_path and not os.path.exists(media_path):
+        log.warning("media topilmadi: %s — faqat matn yuboriladi", media_path)
+        media_path = None
+
     client = _new_client(session)
     await client.connect()
     sent = 0
     failed: list[tuple[int, str]] = []
+
+    async def _send(chat_id: int) -> None:
+        if media_path:
+            # send_file caption bilan media yuboradi (video/rasm avtomatik aniqlanadi).
+            await client.send_file(chat_id, media_path, caption=text or "")
+        else:
+            await client.send_message(chat_id, text)
+
     try:
         if not await client.is_user_authorized():
             raise PermissionError("session yaroqsiz")
 
         for chat_id in chat_ids:
             try:
-                await client.send_message(chat_id, text)
+                await _send(chat_id)
                 sent += 1
             except FloodWaitError as e:
                 # Telegram kutishni talab qildi — kutamiz va qayta urinamiz.
                 log.warning("FloodWait %ss (chat %s)", e.seconds, chat_id)
                 await asyncio.sleep(e.seconds + 1)
                 try:
-                    await client.send_message(chat_id, text)
+                    await _send(chat_id)
                     sent += 1
                 except Exception as e2:  # noqa: BLE001
                     failed.append((chat_id, str(e2)))

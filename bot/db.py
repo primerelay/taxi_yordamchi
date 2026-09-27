@@ -12,7 +12,10 @@ CREATE TABLE IF NOT EXISTS users (
     user_id          INTEGER PRIMARY KEY,   -- haydovchining Telegram ID si
     phone            TEXT,
     session          TEXT,                  -- Telethon StringSession
-    message          TEXT,
+    message          TEXT,                  -- faol shablon matni (caption)
+    media_path       TEXT,                  -- faol shablon media fayli yo'li (rasm/video)
+    media_type       TEXT,                  -- 'photo' | 'video' | NULL
+    active_template_id INTEGER,             -- hozir faol shablon id si
     interval_minutes INTEGER,               -- eski (endi ishlatilmaydi)
     interval_seconds INTEGER,
     active           INTEGER NOT NULL DEFAULT 0,
@@ -45,7 +48,9 @@ CREATE TABLE IF NOT EXISTS payments (
 CREATE TABLE IF NOT EXISTS templates (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL,
-    text       TEXT NOT NULL,
+    text       TEXT,                          -- matn/caption (media bo'lsa bo'sh bo'lishi mumkin)
+    media_path TEXT,                          -- rasm/video fayl yo'li
+    media_type TEXT,                          -- 'photo' | 'video' | NULL
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
@@ -60,6 +65,15 @@ _MIGRATIONS = {
     "interval_seconds": "ALTER TABLE users ADD COLUMN interval_seconds INTEGER",
     "referred_by": "ALTER TABLE users ADD COLUMN referred_by INTEGER",
     "onboarded": "ALTER TABLE users ADD COLUMN onboarded INTEGER NOT NULL DEFAULT 0",
+    "media_path": "ALTER TABLE users ADD COLUMN media_path TEXT",
+    "media_type": "ALTER TABLE users ADD COLUMN media_type TEXT",
+    "active_template_id": "ALTER TABLE users ADD COLUMN active_template_id INTEGER",
+}
+
+# templates jadvali uchun migratsiyalar (media qo'shildi).
+_TEMPLATE_MIGRATIONS = {
+    "media_path": "ALTER TABLE templates ADD COLUMN media_path TEXT",
+    "media_type": "ALTER TABLE templates ADD COLUMN media_type TEXT",
 }
 
 
@@ -76,6 +90,12 @@ async def init() -> None:
                 if column == "onboarded":
                     # mavjud (eski) userlar allaqachon start bosgan — referral bermaslik uchun
                     await db.execute("UPDATE users SET onboarded = 1")
+        # templates jadvaliga yetishmayotgan ustunlar.
+        cur = await db.execute("PRAGMA table_info(templates)")
+        tpl_existing = {row[1] for row in await cur.fetchall()}
+        for column, sql in _TEMPLATE_MIGRATIONS.items():
+            if column not in tpl_existing:
+                await db.execute(sql)
         # Obunasi umuman belgilanmagan (eski) foydalanuvchilarga bir martalik sinov.
         await db.execute(
             "UPDATE users SET paid_until = date('now', 'localtime', ?) WHERE paid_until IS NULL",
@@ -204,18 +224,30 @@ async def set_lang(user_id: int, lang: str) -> None:
         await db.commit()
 
 
-async def set_message(user_id: int, message: str) -> None:
+async def set_active_message(
+    user_id: int,
+    text: str | None,
+    media_path: str | None = None,
+    media_type: str | None = None,
+    template_id: int | None = None,
+) -> None:
+    """Foydalanuvchining hozir yuboriladigan (faol) xabarini belgilaydi."""
     async with aiosqlite.connect(config.DB_PATH) as db:
         await db.execute(
-            "UPDATE users SET message = ? WHERE user_id = ?", (message, user_id)
+            "UPDATE users SET message = ?, media_path = ?, media_type = ?, "
+            "active_template_id = ? WHERE user_id = ?",
+            (text, media_path, media_type, template_id, user_id),
         )
         await db.commit()
 
 
-async def add_template(user_id: int, text: str) -> int:
+async def add_template(
+    user_id: int, text: str | None, media_path: str | None = None, media_type: str | None = None
+) -> int:
     async with aiosqlite.connect(config.DB_PATH) as db:
         cur = await db.execute(
-            "INSERT INTO templates (user_id, text) VALUES (?, ?)", (user_id, text)
+            "INSERT INTO templates (user_id, text, media_path, media_type) VALUES (?, ?, ?, ?)",
+            (user_id, text, media_path, media_type),
         )
         await db.commit()
         return cur.lastrowid
@@ -225,7 +257,9 @@ async def list_templates(user_id: int) -> list[dict]:
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute(
-            "SELECT id, text FROM templates WHERE user_id = ? ORDER BY id", (user_id,)
+            "SELECT id, text, media_path, media_type FROM templates "
+            "WHERE user_id = ? ORDER BY id",
+            (user_id,),
         )
         return [dict(r) for r in await cur.fetchall()]
 
@@ -234,19 +268,45 @@ async def get_template(user_id: int, tpl_id: int) -> Optional[dict]:
     async with aiosqlite.connect(config.DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute(
-            "SELECT id, text FROM templates WHERE user_id = ? AND id = ?",
+            "SELECT id, text, media_path, media_type FROM templates "
+            "WHERE user_id = ? AND id = ?",
             (user_id, tpl_id),
         )
         row = await cur.fetchone()
         return dict(row) if row else None
 
 
-async def delete_template(user_id: int, tpl_id: int) -> None:
+async def delete_template(user_id: int, tpl_id: int) -> Optional[str]:
+    """Shablonni o'chiradi. Boshqa hech kim ishlatmaydigan media fayl yo'lini qaytaradi
+    (chaqiruvchi uni diskdan o'chiradi). Faol shablon bo'lsa — faol xabar tozalanadi."""
     async with aiosqlite.connect(config.DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT media_path FROM templates WHERE user_id = ? AND id = ?",
+            (user_id, tpl_id),
+        )
+        row = await cur.fetchone()
+        media_path = row["media_path"] if row else None
+
         await db.execute(
             "DELETE FROM templates WHERE user_id = ? AND id = ?", (user_id, tpl_id)
         )
+        # O'chirilgan shablon faol bo'lsa — faol xabarni tozalaymiz.
+        await db.execute(
+            "UPDATE users SET message = NULL, media_path = NULL, media_type = NULL, "
+            "active_template_id = NULL WHERE user_id = ? AND active_template_id = ?",
+            (user_id, tpl_id),
+        )
         await db.commit()
+
+        if not media_path:
+            return None
+        # Fayl boshqa shablonda ham ishlatilsa — o'chirmaymiz.
+        cur = await db.execute(
+            "SELECT 1 FROM templates WHERE media_path = ? LIMIT 1", (media_path,)
+        )
+        still_used = await cur.fetchone()
+        return None if still_used else media_path
 
 
 async def set_interval(user_id: int, seconds: int) -> None:

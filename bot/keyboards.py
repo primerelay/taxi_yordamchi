@@ -109,9 +109,26 @@ def templates_keyboard(lang: str, templates: list[dict], active_text: str | None
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def groups_keyboard(lang: str, groups: list[dict], selected: set[int]) -> InlineKeyboardMarkup:
+# Bir sahifada nechta guruh ko'rsatiladi (Telegram inline-klaviatura limiti uchun).
+GROUPS_PER_PAGE = 8
+
+
+def groups_page_count(total: int) -> int:
+    """Guruhlar soniga qarab sahifalar sonini qaytaradi (kamida 1)."""
+    return max(1, (total + GROUPS_PER_PAGE - 1) // GROUPS_PER_PAGE)
+
+
+def groups_keyboard(
+    lang: str, groups: list[dict], selected: set[int], page: int = 0
+) -> InlineKeyboardMarkup:
+    """Guruhlar ro'yxati — sahifalab ko'rsatiladi (har sahifada GROUPS_PER_PAGE ta)."""
+    pages = groups_page_count(len(groups))
+    page = max(0, min(page, pages - 1))
+    start = page * GROUPS_PER_PAGE
+    chunk = groups[start:start + GROUPS_PER_PAGE]
+
     rows: list[list[InlineKeyboardButton]] = []
-    for g in groups:
+    for g in chunk:
         mark = "✅ " if g["chat_id"] in selected else "▫️ "
         rows.append([
             InlineKeyboardButton(
@@ -119,5 +136,16 @@ def groups_keyboard(lang: str, groups: list[dict], selected: set[int]) -> Inline
                 callback_data=f"g:{g['chat_id']}",
             )
         ])
+
+    # Navigatsiya qatori — faqat bir nechta sahifa bo'lganda.
+    if pages > 1:
+        nav: list[InlineKeyboardButton] = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(text=t(lang, "prev_btn"), callback_data=f"gpage:{page - 1}"))
+        nav.append(InlineKeyboardButton(text=f"{page + 1}/{pages}", callback_data="gnop"))
+        if page < pages - 1:
+            nav.append(InlineKeyboardButton(text=t(lang, "next_btn"), callback_data=f"gpage:{page + 1}"))
+        rows.append(nav)
+
     rows.append([InlineKeyboardButton(text=t(lang, "done_btn"), callback_data="groups_done")])
     return InlineKeyboardMarkup(inline_keyboard=rows)

@@ -128,10 +128,12 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "No groups found.",
     },
     "groups_select": {
-        "uz": "👥 Guruhlarni tanlang (belgilash uchun bosing), so'ng «✔️ Tayyor»:",
-        "ru": "👥 Выберите группы (нажмите для отметки), затем «✔️ Готово»:",
-        "en": "👥 Select groups (tap to toggle), then «✔️ Done»:",
+        "uz": "👥 Guruhlarni tanlang (jami {count} ta). Belgilash uchun bosing, so'ng «✔️ Tayyor»:",
+        "ru": "👥 Выберите группы (всего {count}). Нажмите для отметки, затем «✔️ Готово»:",
+        "en": "👥 Select groups ({count} total). Tap to toggle, then «✔️ Done»:",
     },
+    "prev_btn": {"uz": "◀️ Oldingi", "ru": "◀️ Назад",   "en": "◀️ Prev"},
+    "next_btn": {"uz": "Keyingi ▶️", "ru": "Вперёд ▶️",  "en": "Next ▶️"},
     "groups_done": {
         "uz": "✅ {count} ta guruh tanlandi.",
         "ru": "✅ Выбрано групп: {count}.",

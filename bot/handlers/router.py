@@ -271,11 +271,11 @@ async def _open_groups(message: Message, state: FSMContext, lang: str, user: dic
     if not groups:
         await loading.edit_text(t(lang, "no_groups"))
         return
-    await state.update_data(groups=groups)
+    await state.update_data(groups=groups, gpage=0)
     selected = await db.get_selected_group_ids(message.from_user.id)
     await loading.edit_text(
-        t(lang, "groups_select"),
-        reply_markup=keyboards.groups_keyboard(lang, groups, selected),
+        t(lang, "groups_select", count=len(groups)),
+        reply_markup=keyboards.groups_keyboard(lang, groups, selected, 0),
     )
 
 
@@ -617,15 +617,40 @@ async def cb_toggle_group(cb: CallbackQuery, state: FSMContext) -> None:
     chat_id = int(cb.data[2:])
     data = await state.get_data()
     groups = data.get("groups", [])
+    page = data.get("gpage", 0)
     title = next((g["title"] for g in groups if g["chat_id"] == chat_id), str(chat_id))
     await db.toggle_group(cb.from_user.id, chat_id, title)
     selected = await db.get_selected_group_ids(cb.from_user.id)
     try:
         await cb.message.edit_reply_markup(
-            reply_markup=keyboards.groups_keyboard(lang, groups, selected)
+            reply_markup=keyboards.groups_keyboard(lang, groups, selected, page)
         )
     except Exception:  # noqa: BLE001
         pass
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("gpage:"))
+async def cb_groups_page(cb: CallbackQuery, state: FSMContext) -> None:
+    """Guruhlar ro'yxatida boshqa sahifaga o'tish."""
+    lang = await _lang(cb.from_user.id)
+    page = int(cb.data.split(":", 1)[1])
+    data = await state.get_data()
+    groups = data.get("groups", [])
+    await state.update_data(gpage=page)
+    selected = await db.get_selected_group_ids(cb.from_user.id)
+    try:
+        await cb.message.edit_reply_markup(
+            reply_markup=keyboards.groups_keyboard(lang, groups, selected, page)
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    await cb.answer()
+
+
+@router.callback_query(F.data == "gnop")
+async def cb_groups_nop(cb: CallbackQuery) -> None:
+    """Sahifa raqami tugmasi — hech narsa qilmaydi (faqat ko'rsatkich)."""
     await cb.answer()
 
 

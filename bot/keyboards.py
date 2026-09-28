@@ -20,7 +20,7 @@ def main_menu(lang: str, logged_in: bool) -> ReplyKeyboardMarkup:
     """Chat pastida doim turadigan asosiy menyu."""
     if not logged_in:
         rows = [
-            [_btn("login", lang)],
+            [_btn("login", lang), _btn("qr_login", lang)],
             [_btn("invite", lang)],
             [_btn("sub", lang), _btn("lang", lang)],
             [_btn("restart", lang)],

@@ -4,7 +4,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from io import BytesIO
 
+import qrcode
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError, SessionPasswordNeededError
 from telethon.sessions import StringSession
@@ -99,6 +101,38 @@ async def cancel_login(user_id: int) -> None:
 
 def is_awaiting_password(user_id: int) -> bool:
     return user_id in _login_clients
+
+
+# ---------------------------------------------------------------- QR login
+def make_qr_png(data: str) -> bytes:
+    """QR-kod (tg://login?token=...) dan PNG rasm baytlarini yasaydi."""
+    img = qrcode.make(data)
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+async def start_qr_login(user_id: int):
+    """QR login boshlaydi. QRLogin obyektini qaytaradi (.url, .wait(), .recreate())."""
+    await cancel_login(user_id)
+    client = _new_client()
+    await client.connect()
+    qr = await client.qr_login()
+    # Klientni saqlaymiz — 2FA (confirm_password) va cancel_login shu orqali ishlaydi.
+    _login_clients[user_id] = (client, "qr", "")
+    return qr
+
+
+def qr_session(user_id: int) -> str:
+    """QR skanerlangandan keyin sessiyani qaytaradi."""
+    client, _phone, _hash = _login_clients[user_id]
+    return client.session.save()
+
+
+async def finish_qr(user_id: int) -> None:
+    entry = _login_clients.get(user_id)
+    if entry:
+        await _finish_login(user_id, entry[0])
 
 
 # ------------------------------------------------------------- groups & send

@@ -12,11 +12,14 @@ from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from aiogram.filters import BaseFilter, Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
+    BufferedInputFile,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InputMediaPhoto,
     Message,
 )
+from telethon.errors import SessionPasswordNeededError
 
 from .. import config, db, i18n, keyboards, reports, scheduler, userbot
 from ..i18n import button_action, fmt_interval, t
@@ -397,6 +400,13 @@ async def on_menu(message: Message, state: FSMContext, action: str) -> None:
         await message.answer(t(lang, "login_prompt"), reply_markup=keyboards.phone_request(lang))
         return
 
+    if action == "qr_login":
+        await state.clear()
+        await message.answer(t(lang, "qr_generating"))
+        # Fon vazifasi — QR skanerlanguncha (yoki muddat tugaguncha) kutadi.
+        asyncio.create_task(_run_qr_login(message.bot, message.chat.id, uid, lang, state))
+        return
+
     if action == "logout":
         await state.clear()
         scheduler.remove_user_job(uid)
@@ -734,6 +744,88 @@ async def on_password(message: Message, state: FSMContext) -> None:
     await db.set_session(message.from_user.id, data.get("phone", ""), session)
     await state.clear()
     await send_menu(message, t(lang, "login_success"))
+
+
+# ============================ QR LOGIN (fon vazifasi) ============================
+async def _run_qr_login(bot, chat_id: int, uid: int, lang: str, state: FSMContext) -> None:
+    """QR-kodni ko'rsatadi, skanerlanguncha kutadi (muddati tugasa yangilaydi)."""
+    async def _ask_2fa() -> None:
+        # 2FA — klient _login_clients da qoladi, parolni on_password qabul qiladi.
+        await state.set_state(Auth.waiting_password)
+        await state.update_data(phone="")
+        await bot.send_message(chat_id, t(lang, "twofa_prompt"))
+
+    try:
+        qr = await userbot.start_qr_login(uid)
+    except Exception as e:  # noqa: BLE001
+        await bot.send_message(chat_id, t(lang, "qr_error", err=e))
+        return
+
+    png = userbot.make_qr_png(qr.url)
+    msg = await bot.send_photo(
+        chat_id, BufferedInputFile(png, "qr.png"), caption=t(lang, "qr_prompt")
+    )
+
+    # ~2.5 daqiqa: 30s * 5 marta yangilanadi.
+    for _ in range(5):
+        try:
+            await qr.wait(timeout=30)
+        except SessionPasswordNeededError:
+            await _ask_2fa()
+            return
+        except asyncio.TimeoutError:
+            try:
+                await qr.recreate()
+            except SessionPasswordNeededError:
+                await _ask_2fa()
+                return
+            except Exception:  # noqa: BLE001 — klient uzilgan bo'lishi mumkin
+                break
+            png = userbot.make_qr_png(qr.url)
+            try:
+                await bot.edit_message_media(
+                    media=InputMediaPhoto(
+                        media=BufferedInputFile(png, "qr.png"), caption=t(lang, "qr_prompt")
+                    ),
+                    chat_id=chat_id, message_id=msg.message_id,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            continue
+        except Exception as e:  # noqa: BLE001
+            await userbot.cancel_login(uid)
+            try:
+                await bot.edit_message_caption(
+                    chat_id=chat_id, message_id=msg.message_id, caption=t(lang, "qr_error", err=e)
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            return
+
+        # Muvaffaqiyatli skanerlandi
+        session = userbot.qr_session(uid)
+        await userbot.finish_qr(uid)
+        await db.set_session(uid, "", session)
+        await state.clear()
+        try:
+            await bot.edit_message_caption(
+                chat_id=chat_id, message_id=msg.message_id, caption=t(lang, "login_success")
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        await bot.send_message(
+            chat_id, t(lang, "welcome"), reply_markup=keyboards.main_menu(lang, True)
+        )
+        return
+
+    # Muddat tugadi — tozalaymiz
+    await userbot.cancel_login(uid)
+    try:
+        await bot.edit_message_caption(
+            chat_id=chat_id, message_id=msg.message_id, caption=t(lang, "qr_expired")
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # ============================ XABAR SHABLONLARI ============================

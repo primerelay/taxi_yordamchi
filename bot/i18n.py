@@ -19,6 +19,7 @@ BUTTONS: dict[str, dict[str, str]] = {
     "start":    {"uz": "▶️ Boshlash",         "ru": "▶️ Запустить",      "en": "▶️ Start"},
     "stop":     {"uz": "⏹ To'xtatish",        "ru": "⏹ Остановить",      "en": "⏹ Stop"},
     "login":    {"uz": "🔑 Akkauntga kirish",  "ru": "🔑 Войти",          "en": "🔑 Log in"},
+    "qr_login": {"uz": "🔳 QR orqali kirish",  "ru": "🔳 Вход по QR",     "en": "🔳 Log in via QR"},
     "logout":   {"uz": "🚪 Chiqish",          "ru": "🚪 Выйти",          "en": "🚪 Log out"},
     "lang":     {"uz": "🌐 Til",              "ru": "🌐 Язык",           "en": "🌐 Language"},
     "sub":      {"uz": "💳 Obuna",            "ru": "💳 Подписка",       "en": "💳 Subscription"},
@@ -50,6 +51,35 @@ TEXTS: dict[str, dict[str, str]] = {
         "uz": "🚪 Chiqdingiz. Akkaunt uzildi.",
         "ru": "🚪 Вы вышли. Аккаунт отключён.",
         "en": "🚪 Logged out. Account disconnected.",
+    },
+    "qr_generating": {
+        "uz": "⏳ QR-kod tayyorlanmoqda...",
+        "ru": "⏳ Готовим QR-код...",
+        "en": "⏳ Generating QR code...",
+    },
+    "qr_prompt": {
+        "uz": "🔳 <b>QR orqali kirish</b>\n\nTelefoningizda Telegramni oching:\n"
+              "<b>Sozlamalar → Qurilmalar → Kompyuterni ulash</b> (Link Desktop Device)\n"
+              "va ushbu QR-kodni skanerlang.\n\n"
+              "⏱ QR har 30 soniyada yangilanadi. Bekor qilish: /cancel",
+        "ru": "🔳 <b>Вход по QR</b>\n\nОткройте Telegram на телефоне:\n"
+              "<b>Настройки → Устройства → Подключить устройство</b> (Link Desktop Device)\n"
+              "и отсканируйте этот QR-код.\n\n"
+              "⏱ QR обновляется каждые 30 сек. Отмена: /cancel",
+        "en": "🔳 <b>Log in via QR</b>\n\nOpen Telegram on your phone:\n"
+              "<b>Settings → Devices → Link Desktop Device</b>\n"
+              "and scan this QR code.\n\n"
+              "⏱ The QR refreshes every 30 sec. Cancel: /cancel",
+    },
+    "qr_expired": {
+        "uz": "⌛️ QR-kod muddati tugadi. «🔳 QR orqali kirish» tugmasini qayta bosing.",
+        "ru": "⌛️ Срок QR-кода истёк. Нажмите «🔳 Вход по QR» ещё раз.",
+        "en": "⌛️ The QR code expired. Tap «🔳 Log in via QR» again.",
+    },
+    "qr_error": {
+        "uz": "❌ QR loginda xato: {err}\nQayta urinib ko'ring yoki «🔑 Akkauntga kirish» dan foydalaning.",
+        "ru": "❌ Ошибка QR-входа: {err}\nПопробуйте снова или используйте «🔑 Войти».",
+        "en": "❌ QR login error: {err}\nTry again or use «🔑 Log in».",
     },
     "msg_prompt": {
         "uz": "✍️ Guruhlarga yuboriladigan xabar matnini yuboring:",

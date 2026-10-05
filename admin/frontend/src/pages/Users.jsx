@@ -101,7 +101,18 @@ export default function Users() {
 
           {/* Desktop: jadval */}
           <div className="mt-4 hidden overflow-x-auto rounded-xl border border-slate-800 md:block">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[920px] table-fixed text-sm">
+              <colgroup>
+                <col className="w-[110px]" />
+                <col className="w-[200px]" />
+                <col className="w-[150px]" />
+                <col className="w-[140px]" />
+                <col className="w-[70px]" />
+                <col className="w-[120px]" />
+                <col className="w-[120px]" />
+                <col className="w-[110px]" />
+                <col className="w-[150px]" />
+              </colgroup>
               <thead className="bg-slate-900 text-xs uppercase tracking-wide text-slate-400">
                 <tr>
                   {['ID', 'Ism', 'Username', 'Telefon', 'Guruh', 'Holat', "To'lov", 'Muddat', 'Oxirgi faollik'].map((h) => (
@@ -116,10 +127,10 @@ export default function Users() {
                     onClick={() => navigate(`/users/${u.user_id}`)}
                     className="cursor-pointer border-t border-slate-800 bg-slate-800/40 hover:bg-slate-700/50"
                   >
-                    <td className="px-3.5 py-2.5">{u.user_id}</td>
-                    <td className="px-3.5 py-2.5">{u.full_name || '—'}</td>
-                    <td className="px-3.5 py-2.5">{u.username ? '@' + u.username : '—'}</td>
-                    <td className="px-3.5 py-2.5">{u.phone || '—'}</td>
+                    <td className="px-3.5 py-2.5 whitespace-nowrap">{u.user_id}</td>
+                    <td className="px-3.5 py-2.5 truncate" title={u.full_name || ''}>{u.full_name || '—'}</td>
+                    <td className="px-3.5 py-2.5 truncate" title={u.username || ''}>{u.username ? '@' + u.username : '—'}</td>
+                    <td className="px-3.5 py-2.5 whitespace-nowrap">{u.phone || '—'}</td>
                     <td className="px-3.5 py-2.5">{u.groups_count}</td>
                     <td className="px-3.5 py-2.5"><MailBadge user={u} /></td>
                     <td className="px-3.5 py-2.5"><PayBadge status={u.pay_status} /></td>

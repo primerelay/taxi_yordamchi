@@ -138,6 +138,9 @@ def _decorate(u: dict, today: str) -> dict:
         u["pay_status"] = "paid" if pu >= today else "expired"
     else:
         u["pay_status"] = "unpaid"
+    # Maxfiy Telethon sessiyasini brauzerga yubormaymiz — faqat bor/yo'qligi (0/1).
+    if "session" in u:
+        u["session"] = 1 if u["session"] else 0
     return u
 
 
